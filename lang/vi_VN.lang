@@ -1,0 +1,101 @@
+# Tên các màn hình cài đặt
+screen.BIOME_SCREEN=Khí Hậu & Biome
+screen.SKY_SCREEN=Bầu Trời & Vật Lý Khí Quyển
+screen.SUN_SCREEN=Mặt Trời & Quang Học
+screen.MOON_SCREEN=Mặt Trăng, Sao Băng & Đêm
+screen.CLOUD_SCREEN=Mây Thể Tích 3D (Raymarched)
+screen.WEATHER_SCREEN=Thời Tiết & Dông Bão
+screen.POST_SCREEN=Hậu Kỳ & Màu Sắc
+
+# Khí hậu Biome
+option.BIOME_ADAPTATION=Hệ Thống Khí Hậu Theo Biome
+option.DESERT_SANDSTORM=Bão Cát Sa Mạc (Thay Mưa)
+
+# Bầu trời & Khí quyển
+option.ATMOSPHERE_DENSITY=Mật Độ Khí Quyển
+value.ATMOSPHERE_DENSITY.0.5=Rất Mỏng
+value.ATMOSPHERE_DENSITY.0.75=Mỏng
+value.ATMOSPHERE_DENSITY.1.0=Tiêu Chuẩn
+value.ATMOSPHERE_DENSITY.1.25=Dày
+value.ATMOSPHERE_DENSITY.1.5=Rất Dày
+value.ATMOSPHERE_DENSITY.2.0=Cực Dày
+option.RAYLEIGH_SCATTERING=Tán Xạ Rayleigh
+option.MIE_SCATTERING=Tán Xạ Hạt Mie
+option.OZONE_ABSORPTION=Hấp Thụ Ozone Chappuis (Giờ Xanh)
+option.SKY_GROUND_FOG=Sương Mù Chân Trời
+
+# Mặt trời
+option.ENABLE_SUN=Mặt Trời Thủ Tục Chân Thực
+option.SUN_SIZE=Kích Thước Mặt Trời
+option.SUN_LIMB_DARKENING=Hiệu Ứng Tối Viền (Limb)
+option.SUN_CORONA_INTENSITY=Vành Nhật Hoa (Corona)
+option.SUN_GLARE=Chói Sáng Khí Quyển
+option.SOLAR_DIFFRACTION_SPIKES=Tia Khúc Xạ Ống Kính (Diffraction Spikes)
+option.GODRAYS=Tia Sáng Mặt Trời (God Rays)
+option.GODRAYS_INTENSITY=Cường Độ Tia Sáng
+
+# Mặt trăng & Bầu trời đêm
+option.ENABLE_MOON=Mặt Trăng Thủ Tục Chi Tiết Cao
+option.MOON_SIZE=Kích Thước Mặt Trăng
+option.MOON_PHASES=Tuần Trăng Chính Xác (8 Pha)
+option.MOON_SURFACE_DETAIL=Chi Tiết Miệng Núi & Biển Basalt
+option.MOON_EARTHSHINE=Ánh Đất Chiếu Trăng (Earthshine)
+option.MOON_HALO=Quầng Sáng Mặt Trăng & Vòng Băng
+option.MOON_HALO_INTENSITY=Cường Độ Quầng Sáng
+option.ENABLE_STARS=Sao Đêm
+option.STARS_DENSITY=Mật Độ Sao
+option.STARS_TWINKLE=Sao Nhấp Nháy Khí Quyển
+option.STARS_COLOR_VARIETY=Màu Sao Phổ Nhiệt (Ballesteros B-V)
+option.NASA_SVS_MILKY_WAY=Ngân Hà NASA SVS 4851 (1,7 Tỷ Sao)
+option.NASA_SVS_MILKY_WAY.comment=Tái hiện dải Ngân Hà thực tế từ dữ liệu Gaia DR2 và Tycho-2 của NASA SVS 4851.
+option.MILKY_WAY=Bật Dải Ngân Hà
+option.MILKY_WAY_BRIGHTNESS=Độ Sáng Ngân Hà
+option.CONSTELLATION_FIGURES=Đường Nối Chòm Sao (IAU Figures)
+option.CONSTELLATION_FIGURES.comment=Hiển thị đường nối sao của 88 chòm sao thiên văn theo chuẩn IAU từ NASA SVS 4851.
+option.CONSTELLATION_INTENSITY=Độ Sáng Đường Chòm Sao
+option.CELESTIAL_GRID=Lưới Tọa Độ Thiên Văn (RA/Dec)
+option.CELESTIAL_GRID.comment=Hiển thị lưới xích đạo thiên cầu (Xích kinh & Xích vĩ J2000) từ NASA SVS 4851.
+option.CELESTIAL_GRID_INTENSITY=Độ Sáng Lưới Tọa Độ
+option.CELESTIAL_LATITUDE=Vĩ Độ Thiên Cầu Quan Sát
+option.CELESTIAL_LATITUDE.comment=Góc nâng thiên cực Bắc (sao Bắc Đẩu/Polaris) theo vĩ độ địa lý người quan sát.
+value.CELESTIAL_LATITUDE.0.0=0° (Xích Đạo)
+value.CELESTIAL_LATITUDE.20.0=20° Bắc (Nhiệt Đới)
+value.CELESTIAL_LATITUDE.30.0=30° Bắc
+value.CELESTIAL_LATITUDE.42.0=42° Bắc (Ôn Đới - Mặc định)
+value.CELESTIAL_LATITUDE.50.0=50° Bắc
+value.CELESTIAL_LATITUDE.60.0=60° Bắc (Cận Cực)
+value.CELESTIAL_LATITUDE.90.0=90° Bắc (Bắc Cực)
+option.METEOR_SHOWERS=Mưa Sao Băng (Meteors)
+option.AURORA_BOREALIS=Cực Quang Đa Tầng (Aurora Borealis)
+option.AURORA_INTENSITY=Cường Độ Cực Quang
+
+# Mây thể tích 3D
+option.ENABLE_CLOUDS=Bật Hệ Thống Mây
+option.VOLUMETRIC_3D_CLOUDS=Mây Thể Tích 3D (Raymarched)
+option.VOLUMETRIC_CLOUD_STEPS=Số Bước Raymarch Mây
+value.VOLUMETRIC_CLOUD_STEPS.12=Nhanh (12 Bước)
+value.VOLUMETRIC_CLOUD_STEPS.16=Vừa (16 Bước)
+value.VOLUMETRIC_CLOUD_STEPS.20=Cao (20 Bước)
+value.VOLUMETRIC_CLOUD_STEPS.24=Siêu Cao (24 Bước)
+value.VOLUMETRIC_CLOUD_STEPS.32=Điện Ảnh (32 Bước)
+option.CLOUD_LAYERS=Số Lớp Mây
+value.CLOUD_LAYERS.1=Mây Tích (Cumulus)
+value.CLOUD_LAYERS.2=Mây Tích + Mây Ti (Cirrus)
+option.CLOUD_SPEED=Tốc Độ Gió
+option.CLOUD_DENSITY=Độ Dày Của Mây
+option.CLOUD_SILVER_LINING=Viền Sáng Bạc Tán Xạ Kép
+option.CLOUD_SHADOWING=Tự Đổ Bóng Khối & Hiệu Ứng Đường Bột
+
+# Thời tiết
+option.DYNAMIC_WEATHER=Thời Tiết Động
+option.RAIN_FOG_DENSITY=Mật Độ Sương Mưa
+option.STORM_LIGHTNING=Sấm Sét Chớp Xung Kép/Ba
+option.RAIN_STREAKS=Chi Tiết Vệt Hạt Mưa
+option.WETNESS_EFFECT=Mặt Đất Ướt Nước
+
+# Hậu kỳ & Màu sắc
+option.TONEMAP_ACES=Chỉnh Màu Điện Ảnh ACES
+option.EXPOSURE=Độ Phơi Sáng
+option.SATURATION=Độ Bão Hòa Màu
+option.VIGNETTE=Làm Tối Góc Màn Hình (Vignette)
+option.VIGNETTE_STRENGTH=Cường Độ Tối Góc
