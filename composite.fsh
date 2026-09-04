@@ -68,40 +68,51 @@ void main() {
         finalColor = mix(finalColor, fogAtmColor, saturate(totalFog));
     }
 
-    // === GOD RAYS / CREPUSCULAR LIGHT SHAFTS ===
+    // === GOD RAYS / CREPUSCULAR LIGHT SHAFTS (Sun & Moon) ===
     #ifdef GODRAYS
-    if (sunPosition.z < 0.0 && rainStrength < 0.85 && sunHeight > -0.10) {
-        vec4 sunClip = gbufferProjection * vec4(sunPosition, 1.0);
-        vec3 sunNDC = sunClip.xyz / sunClip.w;
-        vec2 sunUV = sunNDC.xy * 0.5 + 0.5;
+    if (rainStrength < 0.85) {
+        bool useSun = (sunHeight > -0.08);
+        vec3 lightPosEye = useSun ? sunPosition : moonPosition;
+        float lightHeight = useSun ? sunHeight : dot(moonDir, upVector);
 
-        if (sunUV.x >= -0.3 && sunUV.x <= 1.3 && sunUV.y >= -0.3 && sunUV.y <= 1.3) {
-            vec2 deltaUV = (sunUV - texCoord) / 16.0;
-            // Screen-space Blue Noise jitter (Moments in Graphics) to eliminate stepping and white-noise grain
-            float jitter = getRaymarchJitter(gl_FragCoord.xy, frameTimeCounter);
-            vec2 sampleCoord = texCoord + deltaUV * jitter;
+        if (lightPosEye.z < 0.0 && lightHeight > -0.10) {
+            vec4 lightClip = gbufferProjection * vec4(lightPosEye, 1.0);
+            vec3 lightNDC = lightClip.xyz / lightClip.w;
+            vec2 lightUV = lightNDC.xy * 0.5 + 0.5;
 
-            float rayDensity = 0.0;
-            float decay = 1.0;
+            if (lightUV.x >= -0.3 && lightUV.x <= 1.3 && lightUV.y >= -0.3 && lightUV.y <= 1.3) {
+                vec2 deltaUV = (lightUV - texCoord) / 16.0;
+                // Screen-space Blue Noise jitter (Moments in Graphics) to eliminate stepping and white-noise grain
+                float jitter = getRaymarchJitter(gl_FragCoord.xy, frameTimeCounter);
+                vec2 sampleCoord = texCoord + deltaUV * jitter;
 
-            for (int i = 0; i < 16; ++i) {
-                sampleCoord += deltaUV;
-                float d = texture2D(depthtex0, sampleCoord).r;
-                if (d >= 0.9999) {
-                    rayDensity += decay;
+                float rayDensity = 0.0;
+                float decay = 1.0;
+
+                for (int i = 0; i < 16; ++i) {
+                    sampleCoord += deltaUV;
+                    float d = texture2D(depthtex0, sampleCoord).r;
+                    if (d >= 0.9999) {
+                        rayDensity += decay;
+                    }
+                    decay *= 0.87;
                 }
-                decay *= 0.87;
+
+                rayDensity /= 16.0;
+
+                float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * smoothstep(1.2, 0.9, lightUV.x) *
+                                 smoothstep(-0.2, 0.1, lightUV.y) * smoothstep(1.2, 0.9, lightUV.y);
+
+                vec3 godrayColor;
+                if (useSun) {
+                    godrayColor = getSunColor(sunHeight, rainStrength);
+                    if (biomeAtm.isArid) godrayColor = mix(godrayColor, godrayColor * vec3(1.1, 0.85, 0.65), biomeAtm.sandstormFactor);
+                } else {
+                    godrayColor = getMoonColor(lightHeight, rainStrength) * 1.8;
+                }
+
+                finalColor += godrayColor * rayDensity * edgeFade * 0.55 * GODRAYS_INTENSITY;
             }
-
-            rayDensity /= 16.0;
-
-            float edgeFade = smoothstep(-0.2, 0.1, sunUV.x) * smoothstep(1.2, 0.9, sunUV.x) *
-                             smoothstep(-0.2, 0.1, sunUV.y) * smoothstep(1.2, 0.9, sunUV.y);
-
-            vec3 godrayColor = getSunColor(sunHeight, rainStrength);
-            if (biomeAtm.isArid) godrayColor = mix(godrayColor, godrayColor * vec3(1.1, 0.85, 0.65), biomeAtm.sandstormFactor);
-
-            finalColor += godrayColor * rayDensity * edgeFade * 0.55 * GODRAYS_INTENSITY;
         }
     }
     #endif

@@ -30,12 +30,13 @@ void main() {
 
     float sunHeight = dot(sunDir, upVector);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
+    float stormAzimuth = getStormLightningAzimuth(frameTimeCounter);
 
     // Smoothly interpolated biome climate profile (continuous transition across borders)
     BiomeAtmosphere biomeAtm = getSmoothBiomeAtmosphere(biome_category, biome, fogColor);
 
     // 1. Rayleigh, Mie & Ozone atmospheric sky gradient with smoothly blended biome tint
-    vec3 skyColor = calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rainStrength, stormLightning, biomeAtm);
+    vec3 skyColor = calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rainStrength, stormLightning, stormAzimuth, biomeAtm);
 
     // 2. Stars, Milky Way Galaxy band, Meteors, and Multi-Layer Aurora Borealis (NASA SVS 4851)
     vec3 stars = renderStarsAndMilkyWay(rayDir, sunHeight, rainStrength, frameTimeCounter, worldTime, biomeAtm);

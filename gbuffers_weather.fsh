@@ -48,9 +48,15 @@ void main() {
     float blockLightmap = clamp(lmcoord.x * 1.2, 0.0, 1.0);
     vec3 torchLightColor = vec3(1.0, 0.65, 0.3) * blockLightmap * 1.5;
 
-    // Ambient raindrop illumination
+    // Ambient raindrop illumination with optical forward scattering (glistening when facing sun/moon)
+    vec3 particleDir = normalize(worldPos);
+    float cosSun  = max(dot(particleDir, sunDir), 0.0);
+    float cosMoon = max(dot(particleDir, moonDir), 0.0);
+    float forwardSun  = 1.0 + pow(cosSun, 6.0) * 3.5;
+    float forwardMoon = 1.0 + pow(cosMoon, 4.0) * 2.0;
+
     vec3 ambient = skyLight * skyLightmap * 0.8 + torchLightColor;
-    vec3 directLight = (sunLight + moonLight) * skyLightmap;
+    vec3 directLight = (sunLight * forwardSun + moonLight * forwardMoon) * skyLightmap;
     vec3 totalLight = ambient + directLight;
 
     #ifdef STORM_LIGHTNING

@@ -19,6 +19,10 @@ float getStormLightningFlash(float rain, float timeSec) {
     return 0.0;
     #endif
 
+    #ifndef DYNAMIC_WEATHER
+    return 0.0;
+    #endif
+
     if (rain < 0.60) return 0.0;
 
     float timer = timeSec * 0.45;
@@ -44,8 +48,19 @@ float getStormLightningFlash(float rain, float timeSec) {
     return 0.0;
 }
 
+// Directional azimuth (in radians [0..2PI]) of the active lightning strike
+float getStormLightningAzimuth(float timeSec) {
+    float timer = timeSec * 0.45;
+    float cycle = floor(timer);
+    return hash11(cycle * 19.3 + 7.0) * TWO_PI;
+}
+
 // Atmospheric rain / weather fog density calculation
 float calculateRainFogFactor(float distanceToCamera, float rain, BiomeAtmosphere biomeAtm) {
+    #ifndef DYNAMIC_WEATHER
+    return 0.0;
+    #endif
+
     float baseDensity = 0.0018 * RAIN_FOG_DENSITY * biomeAtm.hazeDensity;
     
     #ifdef DESERT_SANDSTORM

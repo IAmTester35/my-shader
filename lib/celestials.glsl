@@ -14,164 +14,151 @@
  * ==============================================================================
  */
 
-// Procedural realistic Sun with diffraction spikes & corona
-vec3 renderSun(vec3 rayDir, vec3 sunDir, float sunHeight, float rain, BiomeAtmosphere biomeAtm) {
-    #ifndef ENABLE_SUN
-    return vec3(0.0);
-    #endif
+// Procedural realistic Sun disc, limb darkening, corona, glare, and diffraction spikes for billboard rendering
+vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
+    if (rainStrength > 0.95 || sunHeight < -0.18) return vec4(0.0);
 
-    if (rain > 0.95 || sunHeight < -0.15) return vec3(0.0);
+    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 5.2;
+    vec3 sunsetColor  = vec3(1.00, 0.45, 0.08) * 4.2;
+    vec3 horizonColor = vec3(0.96, 0.16, 0.02) * 3.4;
 
-    float cosTheta = dot(rayDir, sunDir);
-    float angle = acos(clamp(cosTheta, -1.0, 1.0));
-    float sunRadius = 0.032 * SUN_SIZE;
-
-    // Sun color based on altitude
-    vec3 noonColor   = vec3(1.00, 0.98, 0.94) * 4.2;
-    vec3 sunsetColor = vec3(1.00, 0.38, 0.06) * 3.6;
-    vec3 horizonColor= vec3(0.96, 0.12, 0.02) * 2.8;
-
-    // Biome dust tint on sun during sunset
     if (biomeAtm.isArid) {
-        sunsetColor = vec3(1.00, 0.28, 0.04) * 3.8;
+        sunsetColor = mix(sunsetColor, vec3(1.00, 0.32, 0.04) * 4.4, biomeAtm.sandstormFactor);
     }
 
-    float sunsetT = clamp(1.0 - sunHeight * 4.0, 0.0, 1.0);
+    float sunsetT  = clamp(1.0 - sunHeight * 4.0, 0.0, 1.0);
     float horizonT = clamp(-sunHeight * 8.0 + 0.4, 0.0, 1.0);
-    vec3 sunColor = mix(noonColor, sunsetColor, sunsetT);
-    sunColor = mix(sunColor, horizonColor, horizonT);
+    vec3 currentSunColor = mix(noonColor, sunsetColor, sunsetT);
+    currentSunColor = mix(currentSunColor, horizonColor, horizonT);
 
-    vec3 result = vec3(0.0);
+    float discRadius = 0.50 * SUN_SIZE;
+    vec3 sunEmission = vec3(0.0);
+    float alpha = 0.0;
 
-    // 1. Sharp solar disc with limb darkening
-    if (angle < sunRadius) {
-        float r = angle / sunRadius;
+    // 1. Sharp solar disc with 3-term Eddington limb darkening
+    if (distToCenter < discRadius) {
+        float r = distToCenter / discRadius;
         #ifdef SUN_LIMB_DARKENING
-        // 3-term Eddington solar limb darkening approximation
         float mu = sqrt(max(1.0 - r * r, 0.0));
-        float limbDarkening = 0.32 + 0.68 * pow(mu, 0.65);
+        float limbDarkening = 0.35 + 0.65 * pow(mu, 0.65);
         #else
         float limbDarkening = 1.0;
         #endif
-        float edgeAA = smoothstep(1.0, 0.92, r);
-        result += sunColor * limbDarkening * edgeAA * 5.2;
+        float edgeAA = smoothstep(1.0, 0.94, r);
+        sunEmission += currentSunColor * limbDarkening * edgeAA;
+        alpha = max(alpha, edgeAA);
     }
 
     // 2. Solar Corona (intense inner glow)
     if (SUN_CORONA_INTENSITY > 0.001) {
-        float coronaDist = max(angle - sunRadius * 0.7, 0.0);
-        float coronaGlow = exp(-coronaDist * 22.0) * SUN_CORONA_INTENSITY;
-        result += sunColor * coronaGlow * 1.5;
+        float coronaGlow = exp(-distToCenter * 4.2) * SUN_CORONA_INTENSITY * 0.85;
+        sunEmission += currentSunColor * coronaGlow;
+        alpha = max(alpha, clamp(coronaGlow, 0.0, 1.0));
     }
 
-    // 3. Wide atmospheric solar glare
+    // 3. Wide solar glare halo
     #ifdef SUN_GLARE
-    float glare = 1.0 / (1.0 + angle * angle * 180.0);
-    result += sunColor * glare * 0.38 * biomeAtm.hazeDensity;
+    float glare = 0.22 / (1.0 + distToCenter * distToCenter * 6.0) * biomeAtm.hazeDensity;
+    sunEmission += currentSunColor * glare;
+    alpha = max(alpha, clamp(glare, 0.0, 1.0));
     #endif
 
-    // 4. Anamorphic / 4-point solar diffraction spikes
+    // 4. Solar diffraction starburst spikes
     #ifdef SOLAR_DIFFRACTION_SPIKES
-    if (angle < 0.45 && sunHeight > 0.02) {
-        vec3 sunRight = normalize(cross(sunDir, vec3(0.0, 1.0, 0.0)));
-        vec3 sunUp    = cross(sunRight, sunDir);
-        vec3 rel = rayDir - sunDir;
-        float x = dot(rel, sunRight);
-        float y = dot(rel, sunUp);
-
-        // Cross spikes oriented at 45 degrees
-        vec2 rotSpike = vec2(x + y, x - y) * 0.7071;
-        float spike1 = exp(-abs(rotSpike.x) * 450.0) / (abs(rotSpike.y) * 12.0 + 1.0);
-        float spike2 = exp(-abs(rotSpike.y) * 450.0) / (abs(rotSpike.x) * 12.0 + 1.0);
-        float totalSpike = (spike1 + spike2) * smoothstep(0.45, 0.02, angle);
-        result += sunColor * totalSpike * 0.28;
-    }
+    vec2 rotCoord = vec2(localCoord.x + localCoord.y, localCoord.x - localCoord.y) * 0.7071;
+    float sp1 = exp(-abs(rotCoord.x) * 12.0) / (abs(rotCoord.y) * 2.0 + 1.0);
+    float sp2 = exp(-abs(rotCoord.y) * 12.0) / (abs(rotCoord.x) * 2.0 + 1.0);
+    float spike = (sp1 + sp2) * exp(-distToCenter * 2.5) * 0.45;
+    sunEmission += currentSunColor * spike;
+    alpha = max(alpha, clamp(spike, 0.0, 1.0));
     #endif
 
-    // Attenuation in weather
-    result *= (1.0 - rain * 0.9);
-    return result;
+    // Smooth circular quad boundary falloff: guarantees 0 at quad edges, eliminating square cut-off boxes
+    float quadFade = smoothstep(1.0, 0.70, distToCenter);
+    sunEmission *= quadFade;
+    alpha *= quadFade;
+
+    float weatherFade = 1.0 - rainStrength * 0.90;
+    return vec4(sunEmission * weatherFade, alpha * weatherFade);
 }
 
-// Procedural high-detail Moon with maria, craters, 8 phases, and ice crystal halo
-vec3 renderMoon(vec3 rayDir, vec3 moonDir, vec3 upVector, int phase, float sunHeight, float rain, BiomeAtmosphere biomeAtm) {
-    #ifndef ENABLE_MOON
-    return vec3(0.0);
-    #endif
-
-    if (rain > 0.92 || sunHeight > 0.15) return vec3(0.0);
-
-    float cosTheta = dot(rayDir, moonDir);
-    float angle = acos(clamp(cosTheta, -1.0, 1.0));
-    float moonRadius = 0.032 * MOON_SIZE;
-
-    vec3 result = vec3(0.0);
-    vec3 moonBaseColor = vec3(0.88, 0.92, 1.0);
+// Procedural high-detail Moon with maria, craters, 8-phases, and halo for billboard rendering
+vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 moonDir, vec3 upVector, int moonPhase, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
+    if (rainStrength > 0.92 || sunHeight > 0.18) return vec4(0.0);
 
     float nightFactor = clamp(-sunHeight * 8.0, 0.0, 1.0);
+    float discRadius = 0.50 * MOON_SIZE;
+    vec3 moonBaseColor = vec3(0.90, 0.94, 1.0);
+    vec3 moonEmission = vec3(0.0);
+    float alpha = 0.0;
 
-    // Tangent basis for projection onto moon disc
-    vec3 moonRight = normalize(cross(moonDir, upVector));
-    vec3 moonUp    = cross(moonRight, moonDir);
+    if (distToCenter < discRadius) {
+        float r = distToCenter / discRadius;
+        float edgeAA = smoothstep(1.0, 0.93, r);
 
-    vec3 relRay = rayDir - moonDir * cosTheta;
-    vec2 discCoord = vec2(dot(relRay, moonRight), dot(relRay, moonUp)) / moonRadius;
-    float distSq = dot(discCoord, discCoord);
+        float normalZ = sqrt(max(1.0 - r * r, 0.0));
+        vec3 sphereNormal = vec3(localCoord / discRadius, normalZ);
 
-    if (distSq < 1.0) {
-        float r = sqrt(distSq);
-        float edgeAA = smoothstep(1.0, 0.94, r);
-
-        // 3D normal vector on spherical surface
-        vec3 sphereNormal = vec3(discCoord.x, discCoord.y, sqrt(max(1.0 - distSq, 0.0)));
-
-        // Lunar basalt maria & crater ejecta rays
+        // Detailed lunar maria & crater ejecta rays
         #ifdef MOON_SURFACE_DETAIL
-        vec2 noiseUV = discCoord * 1.8 + vec2(0.5, 0.5);
-        float mariaNoise = fbm2D_Detailed(noiseUV * 2.2);
-        float craterRays = voronoi2D(noiseUV * 4.0);
-        
-        float albedo = mix(0.48, 1.05, smoothstep(0.35, 0.72, mariaNoise));
-        albedo += (1.0 - smoothstep(0.0, 0.15, craterRays)) * 0.25;
+        vec2 surfaceUV = (localCoord / discRadius) * 1.5 + vec2(1.2, 0.8);
+        float maria = fbm2D_Detailed(surfaceUV * 2.4);
+        float craterRays = voronoi2D(surfaceUV * 4.2);
+        float albedo = mix(0.52, 1.08, smoothstep(0.36, 0.70, maria));
+        albedo += (1.0 - smoothstep(0.0, 0.12, craterRays)) * 0.28;
         #else
         float albedo = 1.0;
         #endif
 
-        // Moon phase calculation (0=Full, 1=Waning Gibbous, ..., 7=Waxing Gibbous)
+        // 8-Phase lunar cycle with physically oriented terminator pointing toward the Sun
         #ifdef MOON_PHASES
-        float phaseAngle = float(phase) * (TWO_PI / 8.0);
-        vec3 phaseLightDir = normalize(vec3(-sin(phaseAngle), 0.0, cos(phaseAngle)));
+        vec3 moonRight = normalize(cross(moonDir, upVector));
+        vec3 moonUp    = cross(moonRight, moonDir);
+        float sunProjX = dot(sunDir, moonRight);
+        float sunProjY = dot(sunDir, moonUp);
+        vec2 sunTangentDir = normalize(vec2(sunProjX, sunProjY) + vec2(1e-5));
+
+        float phaseAngle = float(moonPhase) * (TWO_PI / 8.0);
+        float lightZ = cos(phaseAngle);
+        float lightTransverse = -sin(phaseAngle);
+        vec3 phaseLightDir = normalize(vec3(sunTangentDir * lightTransverse, lightZ));
+
         float NdotL = dot(sphereNormal, phaseLightDir);
         float illumination = smoothstep(-0.06, 0.06, NdotL);
 
         #ifdef MOON_EARTHSHINE
-        float earthshine = 0.04 * (1.0 - illumination);
-        illumination += earthshine;
+        illumination += 0.05 * (1.0 - illumination);
         #endif
         #else
         float illumination = 1.0;
         #endif
 
-        vec3 surfaceRadiance = moonBaseColor * albedo * illumination * 2.8;
-        result += surfaceRadiance * edgeAA;
+        moonEmission += moonBaseColor * albedo * illumination * 2.6 * edgeAA;
+        alpha = max(alpha, edgeAA);
     }
 
-    // Lunar atmospheric halo / ice crystal ring (amplified in cold biomes)
+    // Lunar atmospheric halo / ice crystal ring
     #ifdef MOON_HALO
-    float haloDist = max(angle - moonRadius * 0.8, 0.0);
-    float innerHalo = exp(-haloDist * 16.0) * 0.35;
-    
-    // 22-degree hexagonal ice-crystal halo ring
-    float ringAngle = abs(angle - 0.38);
-    float haloRingIntensity = biomeAtm.isCold ? 0.35 : 0.12;
-    float haloRing = exp(-ringAngle * ringAngle * 240.0) * haloRingIntensity;
+    float haloGlow = exp(-distToCenter * 3.2) * 0.28 * MOON_HALO_INTENSITY;
+    haloGlow *= mix(1.0, 1.8, biomeAtm.auroraStrength / 1.8);
 
-    vec3 haloColor = vec3(0.55, 0.72, 1.0) * MOON_HALO_INTENSITY;
-    result += haloColor * (innerHalo + haloRing);
+    // 22-degree hexagonal ice crystal halo ring within billboard quad
+    float ringR = abs(distToCenter - 0.72);
+    float ringIntensity = (biomeAtm.isCold ? 0.35 : 0.12) * MOON_HALO_INTENSITY;
+    float haloRing = exp(-ringR * ringR * 120.0) * ringIntensity;
+
+    vec3 haloColor = vec3(0.55, 0.72, 1.0);
+    moonEmission += haloColor * (haloGlow + haloRing);
+    alpha = max(alpha, clamp((haloGlow + haloRing) * 1.5, 0.0, 1.0));
     #endif
 
-    result *= nightFactor * (1.0 - rain * 0.92);
-    return result;
+    // Smooth circular quad boundary falloff
+    float quadFade = smoothstep(1.0, 0.70, distToCenter);
+    moonEmission *= quadFade;
+    alpha *= quadFade;
+
+    float weatherFade = (1.0 - rainStrength * 0.90) * nightFactor;
+    return vec4(moonEmission * weatherFade, alpha * weatherFade);
 }
 
 // Shooting star / meteor streaks
@@ -469,30 +456,36 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     // 7. Multi-Layer Aurora Borealis (prominent in cold/mountain biomes)
     #ifdef AURORA_BOREALIS
     float auroraStrength = biomeAtm.auroraStrength * AURORA_INTENSITY;
-    if (auroraStrength > 0.01 && sphereDir.z < -0.15 && sphereDir.y > 0.03 && sphereDir.y < 0.60) {
-        float northFactor = clamp(-sphereDir.z * 1.6 - 0.2, 0.0, 1.0);
-        float heightFactor = smoothstep(0.03, 0.16, sphereDir.y) * (1.0 - smoothstep(0.32, 0.60, sphereDir.y));
+    if (auroraStrength > 0.01 && sphereDir.y > 0.03 && sphereDir.y < 0.65) {
+        // Continuous smooth northward factor - no abrupt cutoffs
+        float northFactor = smoothstep(0.15, -0.45, sphereDir.z);
+        if (northFactor > 0.001) {
+            float heightFactor = smoothstep(0.03, 0.16, sphereDir.y) * (1.0 - smoothstep(0.32, 0.60, sphereDir.y));
 
-        vec2 auroraUV = vec2(sphereDir.x / (sphereDir.y + 0.15), sphereDir.z / (sphereDir.y + 0.15));
-        
-        float wave1 = sin(auroraUV.x * 2.8 + timeSec * 0.35);
-        float wave2 = cos(auroraUV.x * 5.6 - timeSec * 0.22) * 0.5;
-        float wave3 = sin(auroraUV.x * 9.2 + timeSec * 0.45) * 0.25;
-        float auroraFbm = fbm2D(auroraUV * 2.2 + vec2(timeSec * 0.06, 0.0));
+            // Curving auroral oval projected onto celestial dome
+            float azim = atan(sphereDir.x, max(-sphereDir.z, 0.02));
+            float distFromPole = length(vec2(sphereDir.x, sphereDir.z + 0.35));
+            vec2 auroraUV = vec2(azim * 2.5, (distFromPole - 0.75) / (sphereDir.y + 0.12));
+            
+            float wave1 = sin(auroraUV.x * 2.8 + timeSec * 0.35);
+            float wave2 = cos(auroraUV.x * 5.6 - timeSec * 0.22) * 0.5;
+            float wave3 = sin(auroraUV.x * 9.2 + timeSec * 0.45) * 0.25;
+            float auroraFbm = fbm2D(auroraUV * 2.2 + vec2(timeSec * 0.06, 0.0));
 
-        float curtain = abs(auroraUV.y * 0.38 + wave1 * 0.15 + wave2 * 0.08 + wave3 * 0.04 + auroraFbm * 0.18);
-        curtain = exp(-curtain * 16.0);
+            float curtain = abs(auroraUV.y * 0.38 + wave1 * 0.15 + wave2 * 0.08 + wave3 * 0.04 + auroraFbm * 0.18);
+            curtain = exp(-curtain * 16.0);
 
-        vec3 greenEmerald  = vec3(0.12, 0.88, 0.45);
-        vec3 violetMagenta = vec3(0.68, 0.18, 0.88);
-        vec3 crimsonTop    = vec3(0.85, 0.15, 0.25);
+            vec3 greenEmerald  = vec3(0.12, 0.88, 0.45);
+            vec3 violetMagenta = vec3(0.68, 0.18, 0.88);
+            vec3 crimsonTop    = vec3(0.85, 0.15, 0.25);
 
-        float vGrad1 = smoothstep(0.06, 0.26, sphereDir.y);
-        float vGrad2 = smoothstep(0.24, 0.48, sphereDir.y);
-        vec3 auroraColor = mix(greenEmerald, violetMagenta, vGrad1);
-        auroraColor = mix(auroraColor, crimsonTop, vGrad2);
+            float vGrad1 = smoothstep(0.06, 0.26, sphereDir.y);
+            float vGrad2 = smoothstep(0.24, 0.48, sphereDir.y);
+            vec3 auroraColor = mix(greenEmerald, violetMagenta, vGrad1);
+            auroraColor = mix(auroraColor, crimsonTop, vGrad2);
 
-        starsColor += auroraColor * curtain * heightFactor * northFactor * 0.85 * auroraStrength;
+            starsColor += auroraColor * curtain * heightFactor * northFactor * 0.85 * auroraStrength;
+        }
     }
     #endif
 

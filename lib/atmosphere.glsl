@@ -27,12 +27,17 @@ float dualHgPhase(float cosTheta, float g1, float g2, float k) {
     return mix(hgPhase(cosTheta, g1), hgPhase(cosTheta, g2), k);
 }
 
-// Sky color evaluation for any view ray in world space
-vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
+// Forward declarations for celestial light colors
+vec3 getSunColor(float sunHeight, float rain);
+vec3 getMoonColor(float moonHeight, float rain);
+
+// Sky color evaluation for any view ray in world space (with optional directional lightning azimuth)
+vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float stormAzimuth, BiomeAtmosphere biomeAtm) {
     float cosViewUp = dot(rayDir, upVector);
     float cosSun    = dot(rayDir, sunDir);
     float cosMoon   = dot(rayDir, moonDir);
     float sunHeight = dot(sunDir, upVector);
+    float moonHeight = dot(moonDir, upVector);
 
     // View elevation factor
     float viewElevation = max(cosViewUp, 0.0);
@@ -63,15 +68,22 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     float sunsetFactor = (1.0 - smoothstep(0.0, 0.25, abs(sunHeight))) * (1.0 - smoothstep(0.15, 0.35, sunHeight));
     float nightFactor  = 1.0 - dayFactor;
 
-    // Gradient calculations
-    vec3 daySky = mix(dayHorizon, dayZenith, pow(viewElevation, 0.65));
+    // Atmosphere density parameter modulates zenith-to-horizon gradient falloff
+    float atmDensity = max(ATMOSPHERE_DENSITY, 0.1);
+    vec3 daySky = mix(dayHorizon, dayZenith, pow(viewElevation, 0.65 / atmDensity));
+
+    #ifdef RAYLEIGH_SCATTERING
+    // Physical Rayleigh scattering phase: brightens forward (near sun) and backward (anti-solar), dips at 90°
+    float rPhase = 0.75 + 0.50 * cosSun * cosSun;
+    daySky *= mix(1.0, rPhase, clamp(sunHeight * 2.5, 0.0, 1.0));
+    #endif
 
     // Sunset directional glow
     float sunAzimuthGlow = pow(max(cosSun, 0.0), 3.0);
-    vec3 sunsetSky = mix(sunsetHorizon, sunsetZenith, pow(viewElevation, 0.5));
+    vec3 sunsetSky = mix(sunsetHorizon, sunsetZenith, pow(viewElevation, 0.5 / atmDensity));
     sunsetSky += sunsetGolden * sunAzimuthGlow * (1.0 - viewElevation);
 
-    vec3 nightSky = mix(nightHorizon, nightZenith, pow(viewElevation, 0.7));
+    vec3 nightSky = mix(nightHorizon, nightZenith, pow(viewElevation, 0.7 / atmDensity));
     nightSky += moonlightZenith * max(cosMoon, 0.0) * 0.5;
 
     // Composite time-of-day sky
@@ -80,13 +92,20 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
 
     #ifdef MIE_SCATTERING
     // Forward Mie scattering (aerosol sun halo)
-    if (sunHeight > -0.15) {
-        float mieGlow = hgPhase(cosSun, 0.80) * 0.09 * biomeAtm.hazeDensity;
-        vec3 mieColor = mix(vec3(1.0, 0.65, 0.25), vec3(1.0, 0.96, 0.88), clamp(sunHeight * 3.0, 0.0, 1.0));
-        skyColor += mieColor * mieGlow * clamp(sunHeight + 0.15, 0.0, 1.0);
+    if (sunHeight > -0.18) {
+        float mieGlow = hgPhase(cosSun, 0.82) * 0.11 * biomeAtm.hazeDensity;
+        vec3 mieColor = mix(vec3(1.0, 0.62, 0.22), vec3(1.0, 0.96, 0.90), clamp(sunHeight * 3.0, 0.0, 1.0));
+        skyColor += mieColor * mieGlow * clamp((sunHeight + 0.18) * 4.0, 0.0, 1.0);
+    }
+    // Nocturnal lunar Mie scattering (aerosol moon halo across the night sky)
+    if (sunHeight < 0.10 && moonHeight > -0.15) {
+        float lunarMie = hgPhase(cosMoon, 0.78) * 0.06 * biomeAtm.hazeDensity;
+        vec3 moonMieColor = vec3(0.65, 0.78, 1.0) * getMoonColor(moonHeight, rain);
+        skyColor += moonMieColor * lunarMie * clamp((moonHeight + 0.15) * 4.0, 0.0, 1.0) * (1.0 - dayFactor);
     }
     #endif
 
+    #ifdef DYNAMIC_WEATHER
     // Weather & Biome Overcast
     if (rain > 0.0) {
         #ifdef DESERT_SANDSTORM
@@ -112,20 +131,34 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
 
         #ifdef STORM_LIGHTNING
         if (stormLightning > 0.01) {
-            vec3 lightningColor = vec3(0.88, 0.94, 1.10) * 2.8;
-            skyColor = mix(skyColor, lightningColor, stormLightning * 0.85);
+            vec3 lightningColor = vec3(0.88, 0.94, 1.15) * 3.0;
+            float dirFactor = 0.85;
+            if (stormAzimuth > -50.0) {
+                vec2 strikeDir = vec2(cos(stormAzimuth), sin(stormAzimuth));
+                vec2 rayXZ = normalize(rayDir.xz + vec2(1e-5));
+                dirFactor = 0.35 + 0.65 * max(dot(rayXZ, strikeDir), 0.0);
+            }
+            skyColor = mix(skyColor, lightningColor, stormLightning * dirFactor * 0.90);
         }
         #endif
     }
+    #endif
 
+    #ifdef SKY_GROUND_FOG
     // Atmospheric ground fade near bottom
     if (cosViewUp < 0.0) {
-        float belowHorizon = clamp(-cosViewUp * 4.0, 0.0, 1.0);
-        vec3 groundFogColor = mix(skyColor * 0.5, vec3(0.0), 0.5);
+        float belowHorizon = clamp(-cosViewUp * 3.5, 0.0, 1.0);
+        vec3 groundFogColor = mix(skyColor * 0.35, vec3(0.002, 0.004, 0.008), 0.7);
         skyColor = mix(skyColor, groundFogColor, belowHorizon);
     }
+    #endif
 
     return max(skyColor, vec3(0.0));
+}
+
+// 7-parameter compatibility wrapper
+vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
+    return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, stormLightning, -100.0, biomeAtm);
 }
 
 // Distance fog color matching atmospheric scattering and biome
