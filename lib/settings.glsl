@@ -15,6 +15,8 @@
 #define RAYLEIGH_SCATTERING         // Realistic Rayleigh atmospheric scattering
 #define MIE_SCATTERING              // Forward Mie aerosol/haze scattering
 #define OZONE_ABSORPTION            // Chappuis ozone layer absorption (deep blue/purple twilight)
+#define BELT_OF_VENUS               // Anti-solar twilight arch & Earth shadow projection
+#define SKY_MULTI_SCATTERING        // Multi-scattering ambient sky fill
 #define SKY_GROUND_FOG              // Horizon and altitude atmospheric blending
 #define ATMOSPHERE_DENSITY  1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Atmosphere optical thickness
 
@@ -22,29 +24,34 @@
 #define ENABLE_SUN                  // Custom procedural sun disc and atmospheric flare
 #define SUN_SIZE            1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Angular diameter of the sun
 #define SUN_LIMB_DARKENING          // 3-term polynomial solar limb darkening
-#define SUN_CORONA_INTENSITY 1.2    // [0.0 0.5 1.0 1.2 1.5 2.0] Intensity of solar corona glow
+#define SUN_ATMOSPHERIC_FLATTENING  // Atmospheric refraction flattening near horizon
+#define SUN_CHROMATIC_CORONA        // Multi-spectral chromatic plasma corona ring
+#define SUN_CORONA_INTENSITY 1.4    // [0.0 0.5 1.0 1.2 1.4 1.8 2.5] Intensity of solar corona glow
 #define SUN_GLARE                   // Wide-angle atmospheric solar glare
-#define SOLAR_DIFFRACTION_SPIKES    // Anamorphic 4-point solar flare diffraction spikes
+#define SOLAR_DIFFRACTION_SPIKES    // Anamorphic 6-point solar flare diffraction spikes
 #define GODRAYS                     // Volumetric crepuscular light shafts through clouds and horizon
-#define GODRAYS_INTENSITY   1.2     // [0.5 0.75 1.0 1.2 1.5 2.0] Brightness of god rays
+#define GODRAYS_INTENSITY   1.3     // [0.5 0.75 1.0 1.2 1.3 1.6 2.0] Brightness of god rays
+#define GODRAYS_SAMPLES     24      // [16 20 24 32 40] Raymarch steps for light shafts
 
 // --- Moon ---
 #define ENABLE_MOON                 // Custom high-detail procedural moon
 #define MOON_SIZE           1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Angular diameter of the moon
 #define MOON_PHASES                 // Realistic 8-phase lunar cycle based on world moonPhase
 #define MOON_SURFACE_DETAIL         // Procedural lunar maria (basalt seas) and crater relief
+#define MOON_CRATER_RELIEF          // 3D normal-mapped crater rim relief along terminator
 #define MOON_EARTHSHINE             // Subtle illumination of the unlit lunar crescent
 #define MOON_HALO                   // Ethereal lunar atmospheric halo / ice crystal ring
-#define MOON_HALO_INTENSITY 1.0     // [0.0 0.5 1.0 1.5 2.0] Halo brightness
+#define MOON_HALO_INTENSITY 1.2     // [0.0 0.5 1.0 1.2 1.5 2.0] Halo brightness
 
 // --- Night Sky & Celestials (NASA SVS 4851 Deep Star Maps Edition) ---
 #define ENABLE_STARS                // High-density procedural star field
-#define STARS_DENSITY       1.2     // [0.5 0.75 1.0 1.2 1.5 2.0] Total number of visible stars
+#define STARS_DENSITY       1.35    // [0.5 0.75 1.0 1.2 1.35 1.6 2.0] Total number of visible stars
 #define STARS_TWINKLE               // Atmospheric scintillation / temporal twinkling
 #define STARS_COLOR_VARIETY         // Spectral star classifications via Ballesteros blackbody spectrum
 #define NASA_SVS_MILKY_WAY          // NASA SVS 4851 photographic Milky Way from 1.7B stars (Gaia DR2/Tycho-2)
 #define MILKY_WAY                   // Enable Milky Way galactic band rendering
-#define MILKY_WAY_BRIGHTNESS 0.75   // [0.2 0.4 0.6 0.75 1.0 1.2 1.5 2.0] Visibility of galactic band
+#define MILKY_WAY_BRIGHTNESS 0.85   // [0.2 0.4 0.6 0.75 0.85 1.0 1.2 1.5 2.0] Visibility of galactic band
+#define MILKY_WAY_H_ALPHA           // Hydrogen-alpha red/magenta emission nebula enhancement
 //#define CONSTELLATION_FIGURES     // IAU official constellation stick figures (NASA SVS 4851)
 #define CONSTELLATION_INTENSITY 1.0 // [0.5 0.75 1.0 1.25 1.5] Constellation line brightness
 //#define CELESTIAL_GRID            // Equatorial celestial coordinate grid (RA/Dec J2000)
@@ -52,7 +59,8 @@
 #define CELESTIAL_LATITUDE  42.0    // [0.0 20.0 30.0 42.0 50.0 60.0 90.0] Observer celestial latitude in degrees
 #define METEOR_SHOWERS              // Shooting stars streaking through cosmos at night
 #define AURORA_BOREALIS             // Dynamic undulating Northern Lights (prominent in cold biomes)
-#define AURORA_INTENSITY    1.3     // [0.0 0.5 1.0 1.3 1.5 2.0] Aurora brightness
+#define AURORA_INTENSITY    1.35    // [0.0 0.5 1.0 1.35 1.6 2.0] Aurora brightness
+#define AURORA_RAY_STREAMERS        // High-definition vertical auroral ray streamers
 
 // --- Clouds (High-End Volumetric Raymarched) ---
 #define ENABLE_CLOUDS               // Enable custom cloud system

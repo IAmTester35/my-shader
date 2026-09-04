@@ -99,6 +99,28 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     vec3 sunsetSky = mix(sunsetHorizon, sunsetZenith, pow(viewElevation, 0.5 / atmDensity));
     sunsetSky += sunsetGolden * sunAzimuthGlow * (1.0 - viewElevation);
 
+    #ifdef BELT_OF_VENUS
+    // Belt of Venus & Earth's shadow on the anti-solar horizon (looking away from sunset/sunrise)
+    if (abs(sunHeight) < 0.22) {
+        float antiSunAzimuth = max(-cosSun, 0.0);
+        float twilightBand = smoothstep(0.0, 0.16, viewElevation) * (1.0 - smoothstep(0.12, 0.35, viewElevation));
+        float shadowBand   = (1.0 - smoothstep(0.0, 0.09, viewElevation));
+        
+        vec3 venusPink    = vec3(0.85, 0.38, 0.55); // Backscattered reddened sunlight
+        vec3 earthShadow  = vec3(0.08, 0.10, 0.22); // Dark blue-gray shadow of the Earth
+        
+        float beltStrength = pow(antiSunAzimuth, 2.2) * (1.0 - smoothstep(0.02, 0.22, abs(sunHeight)));
+        sunsetSky = mix(sunsetSky, sunsetSky + venusPink * 0.45, beltStrength * twilightBand);
+        sunsetSky = mix(sunsetSky, earthShadow, beltStrength * shadowBand * 0.65);
+    }
+    #endif
+
+    #ifdef SKY_MULTI_SCATTERING
+    // Higher-order atmospheric multiple scattering: fills shadowed sky with realistic secondary blue/gold ambient
+    vec3 multiScatter = mix(vec3(0.04, 0.09, 0.22), vec3(0.12, 0.15, 0.20), viewElevation) * max(sunHeight + 0.15, 0.0);
+    daySky += multiScatter * 0.35;
+    #endif
+
     vec3 nightSky = mix(nightHorizon, nightZenith, pow(viewElevation, 0.7 / atmDensity));
     nightSky += moonlightZenith * max(cosMoon, 0.0) * 0.5;
 

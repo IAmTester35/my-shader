@@ -22,23 +22,39 @@ value.ATMOSPHERE_DENSITY.2.0=Extreme
 option.RAYLEIGH_SCATTERING=Rayleigh Scattering
 option.MIE_SCATTERING=Mie Aerosol Scattering
 option.OZONE_ABSORPTION=Chappuis Ozone (Blue Hour)
+option.BELT_OF_VENUS=Belt of Venus & Earth Shadow
+option.BELT_OF_VENUS.comment=Renders the pink anti-solar arch and the blue-gray Earth shadow above the opposite horizon during twilight.
+option.SKY_MULTI_SCATTERING=Multi-Scattering Sky Fill
+option.SKY_MULTI_SCATTERING.comment=Simulates higher-order sunlight scattering across the sky dome to prevent unnatural dark shadows.
 option.SKY_GROUND_FOG=Horizon Ground Fog
 
 # Sun
 option.ENABLE_SUN=Custom Procedural Sun
 option.SUN_SIZE=Sun Size
 option.SUN_LIMB_DARKENING=Limb Darkening
+option.SUN_ATMOSPHERIC_FLATTENING=Atmospheric Flattening
+option.SUN_ATMOSPHERIC_FLATTENING.comment=Simulates atmospheric refraction flattening the sun vertically as it sets near the horizon.
+option.SUN_CHROMATIC_CORONA=Chromatic Plasma Corona
+option.SUN_CHROMATIC_CORONA.comment=Multi-spectral dispersion fringe around the solar plasma corona ring.
 option.SUN_CORONA_INTENSITY=Solar Corona
 option.SUN_GLARE=Atmospheric Sun Glare
 option.SOLAR_DIFFRACTION_SPIKES=Diffraction Starburst Spikes
 option.GODRAYS=God Rays (Crepuscular)
 option.GODRAYS_INTENSITY=God Rays Intensity
+option.GODRAYS_SAMPLES=God Rays Samples
+value.GODRAYS_SAMPLES.16=16 Samples (Fast)
+value.GODRAYS_SAMPLES.20=20 Samples (Smooth)
+value.GODRAYS_SAMPLES.24=24 Samples (High Quality)
+value.GODRAYS_SAMPLES.32=32 Samples (Ultra)
+value.GODRAYS_SAMPLES.40=40 Samples (Cinematic)
 
 # Moon & Celestials
 option.ENABLE_MOON=Custom Procedural Moon
 option.MOON_SIZE=Moon Size
 option.MOON_PHASES=Accurate Moon Phases (8 Phases)
 option.MOON_SURFACE_DETAIL=Lunar Basalt Maria & Craters
+option.MOON_CRATER_RELIEF=3D Crater Rim Relief
+option.MOON_CRATER_RELIEF.comment=Renders 3D bump-mapped crater shadows along the lunar terminator line.
 option.MOON_EARTHSHINE=Crescent Earthshine
 option.MOON_HALO=Lunar Halo & Ice Ring
 option.MOON_HALO_INTENSITY=Lunar Halo Intensity
@@ -50,6 +66,8 @@ option.NASA_SVS_MILKY_WAY=NASA SVS 4851 Milky Way (1.7B Stars)
 option.NASA_SVS_MILKY_WAY.comment=Authentic photographic Milky Way reconstructed from NASA SVS 4851 Gaia DR2 & Tycho-2 catalogs.
 option.MILKY_WAY=Enable Milky Way
 option.MILKY_WAY_BRIGHTNESS=Milky Way Brightness
+option.MILKY_WAY_H_ALPHA=Milky Way H-Alpha Nebulae
+option.MILKY_WAY_H_ALPHA.comment=Enhances deep red/magenta Hydrogen-alpha emission regions and star-forming nebulae.
 option.CONSTELLATION_FIGURES=Constellation Figures (IAU)
 option.CONSTELLATION_FIGURES.comment=Renders official 88 IAU constellation stick figures connecting stars from NASA SVS 4851.
 option.CONSTELLATION_INTENSITY=Constellation Line Brightness
@@ -68,6 +86,8 @@ value.CELESTIAL_LATITUDE.90.0=90° N (North Pole)
 option.METEOR_SHOWERS=Shooting Stars (Meteors)
 option.AURORA_BOREALIS=Multi-Layer Aurora Borealis
 option.AURORA_INTENSITY=Aurora Intensity
+option.AURORA_RAY_STREAMERS=Vertical Auroral Ray Streamers
+option.AURORA_RAY_STREAMERS.comment=Renders fast-moving magnetic field ray columns inside the auroral curtains.
 
 # Clouds
 option.ENABLE_CLOUDS=Enable Clouds
@@ -77,6 +97,7 @@ value.VOLUMETRIC_CLOUD_STEPS.12=Fast (12 Steps)
 value.VOLUMETRIC_CLOUD_STEPS.16=Medium (16 Steps)
 value.VOLUMETRIC_CLOUD_STEPS.20=High (20 Steps)
 value.VOLUMETRIC_CLOUD_STEPS.24=Ultra (24 Steps)
+value.VOLUMETRIC_CLOUD_STEPS.28=Extreme (28 Steps)
 value.VOLUMETRIC_CLOUD_STEPS.32=Cinematic (32 Steps)
 option.CLOUD_LAYERS=Cloud Layers
 value.CLOUD_LAYERS.1=Cumulus Deck

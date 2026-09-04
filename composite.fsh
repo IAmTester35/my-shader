@@ -77,23 +77,25 @@ void main() {
             vec2 lightUV = lightNDC.xy * 0.5 + 0.5;
 
             if (lightUV.x >= -0.3 && lightUV.x <= 1.3 && lightUV.y >= -0.3 && lightUV.y <= 1.3) {
-                vec2 deltaUV = (lightUV - texCoord) / 16.0;
+                const int G_STEPS = GODRAYS_SAMPLES;
+                vec2 deltaUV = (lightUV - texCoord) / float(G_STEPS);
                 // Screen-space Blue Noise jitter (Moments in Graphics) to eliminate stepping and white-noise grain
                 float jitter = getRaymarchJitter(gl_FragCoord.xy, frameTimeCounter);
 
                 float rayDensity = 0.0;
                 float decay = 1.0;
+                float decayStep = pow(0.12, 1.0 / float(G_STEPS));
 
-                for (int i = 0; i < 16; ++i) {
+                for (int i = 0; i < G_STEPS; ++i) {
                     vec2 sampleCoord = texCoord + deltaUV * (float(i) + jitter);
                     float d = texture2D(depthtex0, sampleCoord).r;
                     if (d >= 0.9999) {
                         rayDensity += decay;
                     }
-                    decay *= 0.87;
+                    decay *= decayStep;
                 }
 
-                rayDensity /= 16.0;
+                rayDensity /= float(G_STEPS);
 
                 float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * smoothstep(1.2, 0.9, lightUV.x) *
                                  smoothstep(-0.2, 0.1, lightUV.y) * smoothstep(1.2, 0.9, lightUV.y);
@@ -106,7 +108,7 @@ void main() {
                     godrayColor = getMoonColor(lightHeight, rainStrength) * 1.8;
                 }
 
-                finalColor += godrayColor * rayDensity * edgeFade * 0.55 * GODRAYS_INTENSITY;
+                finalColor += godrayColor * rayDensity * edgeFade * 0.58 * GODRAYS_INTENSITY;
             }
         }
     }

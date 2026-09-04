@@ -22,23 +22,39 @@ value.ATMOSPHERE_DENSITY.2.0=Cực Dày
 option.RAYLEIGH_SCATTERING=Tán Xạ Rayleigh
 option.MIE_SCATTERING=Tán Xạ Hạt Mie
 option.OZONE_ABSORPTION=Hấp Thụ Ozone Chappuis (Giờ Xanh)
+option.BELT_OF_VENUS=Vành Đai Sao Kim & Bóng Trái Đất
+option.BELT_OF_VENUS.comment=Tái hiện dải hoàng hôn hồng cam và bóng xám lam của Trái Đất ở chân trời đối diện mặt trời lúc chạng vạng.
+option.SKY_MULTI_SCATTERING=Tán Xạ Khí Quyển Bậc Cao (Fill)
+option.SKY_MULTI_SCATTERING.comment=Mô phỏng tán xạ thứ cấp lấp đầy vùng tối bầu trời, giúp chuyển tiếp màu mượt mà tự nhiên.
 option.SKY_GROUND_FOG=Sương Mù Chân Trời
 
 # Mặt trời
 option.ENABLE_SUN=Mặt Trời Thủ Tục Chân Thực
 option.SUN_SIZE=Kích Thước Mặt Trời
 option.SUN_LIMB_DARKENING=Hiệu Ứng Tối Viền (Limb)
+option.SUN_ATMOSPHERIC_FLATTENING=Biến Dạng Khí Quyển Chân Trời
+option.SUN_ATMOSPHERIC_FLATTENING.comment=Khúc xạ khí quyển nén dẹp mặt trời theo trục đứng khi lặn sát đường chân trời.
+option.SUN_CHROMATIC_CORONA=Nhật Hoa Tán Sắc Plasma
+option.SUN_CHROMATIC_CORONA.comment=Quầng tán sắc viền plasma đa bước sóng quanh vành nhật hoa mặt trời.
 option.SUN_CORONA_INTENSITY=Vành Nhật Hoa (Corona)
 option.SUN_GLARE=Chói Sáng Khí Quyển
 option.SOLAR_DIFFRACTION_SPIKES=Tia Khúc Xạ Ống Kính (Diffraction Spikes)
 option.GODRAYS=Tia Sáng Mặt Trời (God Rays)
 option.GODRAYS_INTENSITY=Cường Độ Tia Sáng
+option.GODRAYS_SAMPLES=Số Mẫu Tia Sáng (Samples)
+value.GODRAYS_SAMPLES.16=16 Mẫu (Nhanh)
+value.GODRAYS_SAMPLES.20=20 Mẫu (Mịn)
+value.GODRAYS_SAMPLES.24=24 Mẫu (Chất Lượng Cao)
+value.GODRAYS_SAMPLES.32=32 Mẫu (Ultra)
+value.GODRAYS_SAMPLES.40=40 Mẫu (Điện Ảnh)
 
 # Mặt trăng & Bầu trời đêm
 option.ENABLE_MOON=Mặt Trăng Thủ Tục Chi Tiết Cao
 option.MOON_SIZE=Kích Thước Mặt Trăng
 option.MOON_PHASES=Tuần Trăng Chính Xác (8 Pha)
 option.MOON_SURFACE_DETAIL=Chi Tiết Miệng Núi & Biển Basalt
+option.MOON_CRATER_RELIEF=Đổ Bóng Miệng Núi Lửa 3D
+option.MOON_CRATER_RELIEF.comment=Mô phỏng gồ ghề 3D của các vành hố va chạm dọc theo đường phân ranh sáng tối.
 option.MOON_EARTHSHINE=Ánh Đất Chiếu Trăng (Earthshine)
 option.MOON_HALO=Quầng Sáng Mặt Trăng & Vòng Băng
 option.MOON_HALO_INTENSITY=Cường Độ Quầng Sáng
@@ -50,6 +66,8 @@ option.NASA_SVS_MILKY_WAY=Ngân Hà NASA SVS 4851 (1,7 Tỷ Sao)
 option.NASA_SVS_MILKY_WAY.comment=Tái hiện dải Ngân Hà thực tế từ dữ liệu Gaia DR2 và Tycho-2 của NASA SVS 4851.
 option.MILKY_WAY=Bật Dải Ngân Hà
 option.MILKY_WAY_BRIGHTNESS=Độ Sáng Ngân Hà
+option.MILKY_WAY_H_ALPHA=Tinh Vân Hydro-Alpha Ngân Hà
+option.MILKY_WAY_H_ALPHA.comment=Tăng cường các dải tinh vân phát xạ màu đỏ/hồng sẫm Hydro-alpha trong dải Ngân Hà.
 option.CONSTELLATION_FIGURES=Đường Nối Chòm Sao (IAU Figures)
 option.CONSTELLATION_FIGURES.comment=Hiển thị đường nối sao của 88 chòm sao thiên văn theo chuẩn IAU từ NASA SVS 4851.
 option.CONSTELLATION_INTENSITY=Độ Sáng Đường Chòm Sao
@@ -68,6 +86,8 @@ value.CELESTIAL_LATITUDE.90.0=90° Bắc (Bắc Cực)
 option.METEOR_SHOWERS=Mưa Sao Băng (Meteors)
 option.AURORA_BOREALIS=Cực Quang Đa Tầng (Aurora Borealis)
 option.AURORA_INTENSITY=Cường Độ Cực Quang
+option.AURORA_RAY_STREAMERS=Cột Sáng Cực Quang Động
+option.AURORA_RAY_STREAMERS.comment=Mô phỏng các tia sáng từ trường chuyển động nhanh dọc theo dải lụa cực quang.
 
 # Mây thể tích 3D
 option.ENABLE_CLOUDS=Bật Hệ Thống Mây
@@ -77,6 +97,7 @@ value.VOLUMETRIC_CLOUD_STEPS.12=Nhanh (12 Bước)
 value.VOLUMETRIC_CLOUD_STEPS.16=Vừa (16 Bước)
 value.VOLUMETRIC_CLOUD_STEPS.20=Cao (20 Bước)
 value.VOLUMETRIC_CLOUD_STEPS.24=Siêu Cao (24 Bước)
+value.VOLUMETRIC_CLOUD_STEPS.28=Rất Cao (28 Bước)
 value.VOLUMETRIC_CLOUD_STEPS.32=Điện Ảnh (32 Bước)
 option.CLOUD_LAYERS=Số Lớp Mây
 value.CLOUD_LAYERS.1=Mây Tích (Cumulus)

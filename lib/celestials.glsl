@@ -14,16 +14,16 @@
  * ==============================================================================
  */
 
-// Procedural realistic Sun disc, limb darkening, corona, glare, and diffraction spikes for billboard rendering
+// Procedural realistic Sun disc, limb darkening, chromatic plasma corona, glare, and anamorphic diffraction spikes
 vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
     if (rainStrength > 0.95 || sunHeight < -0.18) return vec4(0.0);
 
-    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 5.2;
-    vec3 sunsetColor  = vec3(1.00, 0.45, 0.08) * 4.2;
-    vec3 horizonColor = vec3(0.96, 0.16, 0.02) * 3.4;
+    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 5.4;
+    vec3 sunsetColor  = vec3(1.00, 0.44, 0.07) * 4.4;
+    vec3 horizonColor = vec3(0.96, 0.15, 0.02) * 3.6;
 
     if (biomeAtm.isArid) {
-        sunsetColor = mix(sunsetColor, vec3(1.00, 0.32, 0.04) * 4.4, biomeAtm.sandstormFactor);
+        sunsetColor = mix(sunsetColor, vec3(1.00, 0.30, 0.03) * 4.6, biomeAtm.sandstormFactor);
     }
 
     float sunsetT  = clamp(1.0 - sunHeight * 4.0, 0.0, 1.0);
@@ -31,45 +31,73 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec3 currentSunColor = mix(noonColor, sunsetColor, sunsetT);
     currentSunColor = mix(currentSunColor, horizonColor, horizonT);
 
-    float discRadius = 0.50 * SUN_SIZE;
+    // Atmospheric refraction flattening: compresses the vertical axis when sun is close to horizon
+    vec2 sunCoord = localCoord;
+    #ifdef SUN_ATMOSPHERIC_FLATTENING
+    float flattenFactor = 1.0 + clamp((0.15 - sunHeight) * 2.2, 0.0, 0.45);
+    sunCoord.y *= flattenFactor;
+    #endif
+    float flatDist = length(sunCoord);
+
+    float discRadius = 0.48 * SUN_SIZE;
     vec3 sunEmission = vec3(0.0);
     float alpha = 0.0;
 
     // 1. Sharp solar disc with 3-term Eddington limb darkening
-    if (distToCenter < discRadius) {
-        float r = distToCenter / discRadius;
+    if (flatDist < discRadius) {
+        float r = flatDist / discRadius;
         #ifdef SUN_LIMB_DARKENING
         float mu = sqrt(max(1.0 - r * r, 0.0));
-        float limbDarkening = 0.35 + 0.65 * pow(mu, 0.65);
+        // Solar limb darkening with chromatic variation (cooler limb has redder wavelength)
+        float limbDarkening = 0.32 + 0.68 * pow(mu, 0.65);
+        vec3 limbTint = mix(vec3(1.0, 0.72, 0.45), vec3(1.0), pow(mu, 0.4));
         #else
         float limbDarkening = 1.0;
+        vec3 limbTint = vec3(1.0);
         #endif
         float edgeAA = smoothstep(1.0, 0.94, r);
-        sunEmission += currentSunColor * limbDarkening * edgeAA;
+        sunEmission += currentSunColor * limbDarkening * limbTint * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
-    // 2. Solar Corona (intense inner glow)
+    // 2. Solar Corona & Multi-Spectral Chromatic Plasma Glow
     if (SUN_CORONA_INTENSITY > 0.001) {
-        float coronaGlow = exp(-distToCenter * 4.2) * SUN_CORONA_INTENSITY * 0.85;
-        sunEmission += currentSunColor * coronaGlow;
+        float coronaGlow = exp(-flatDist * 3.8) * SUN_CORONA_INTENSITY * 0.92;
+        #ifdef SUN_CHROMATIC_CORONA
+        // Plasma corona fringe with subtle cyan-to-gold chromatic dispersion
+        vec3 coronaColor = mix(vec3(1.0, 0.55, 0.15), currentSunColor, exp(-flatDist * 2.0));
+        coronaColor = mix(coronaColor, vec3(1.0, 0.88, 0.65), exp(-flatDist * 6.5));
+        #else
+        vec3 coronaColor = currentSunColor;
+        #endif
+        sunEmission += coronaColor * coronaGlow;
         alpha = max(alpha, clamp(coronaGlow, 0.0, 1.0));
     }
 
     // 3. Wide solar glare halo
     #ifdef SUN_GLARE
-    float glare = 0.22 / (1.0 + distToCenter * distToCenter * 6.0) * biomeAtm.hazeDensity;
+    float glare = 0.24 / (1.0 + distToCenter * distToCenter * 5.5) * biomeAtm.hazeDensity;
     sunEmission += currentSunColor * glare;
     alpha = max(alpha, clamp(glare, 0.0, 1.0));
     #endif
 
-    // 4. Solar diffraction starburst spikes
+    // 4. Solar diffraction starburst spikes (6-point anamorphic lens diffraction)
     #ifdef SOLAR_DIFFRACTION_SPIKES
-    vec2 rotCoord = vec2(localCoord.x + localCoord.y, localCoord.x - localCoord.y) * 0.7071;
-    float sp1 = exp(-abs(rotCoord.x) * 12.0) / (abs(rotCoord.y) * 2.0 + 1.0);
-    float sp2 = exp(-abs(rotCoord.y) * 12.0) / (abs(rotCoord.x) * 2.0 + 1.0);
-    float spike = (sp1 + sp2) * exp(-distToCenter * 2.5) * 0.45;
-    sunEmission += currentSunColor * spike;
+    float spAngle1 = 0.0;
+    float spAngle2 = 1.047197; // 60 deg
+    float spAngle3 = 2.094395; // 120 deg
+    
+    vec2 p1 = vec2(localCoord.x * cos(spAngle1) - localCoord.y * sin(spAngle1), localCoord.x * sin(spAngle1) + localCoord.y * cos(spAngle1));
+    vec2 p2 = vec2(localCoord.x * cos(spAngle2) - localCoord.y * sin(spAngle2), localCoord.x * sin(spAngle2) + localCoord.y * cos(spAngle2));
+    vec2 p3 = vec2(localCoord.x * cos(spAngle3) - localCoord.y * sin(spAngle3), localCoord.x * sin(spAngle3) + localCoord.y * cos(spAngle3));
+
+    float s1 = exp(-abs(p1.y) * 16.0) / (abs(p1.x) * 2.2 + 1.0);
+    float s2 = exp(-abs(p2.y) * 16.0) / (abs(p2.x) * 2.2 + 1.0);
+    float s3 = exp(-abs(p3.y) * 16.0) / (abs(p3.x) * 2.2 + 1.0);
+
+    float spike = (s1 + s2 + s3) * exp(-distToCenter * 2.6) * 0.38;
+    vec3 spikeColor = mix(vec3(1.0, 0.85, 0.65), currentSunColor, 0.5);
+    sunEmission += spikeColor * spike;
     alpha = max(alpha, clamp(spike, 0.0, 1.0));
     #endif
 
@@ -82,13 +110,13 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     return vec4(sunEmission * weatherFade, alpha * weatherFade);
 }
 
-// Procedural high-detail Moon with maria, craters, 8-phases, and halo for billboard rendering
+// Procedural high-detail Moon with maria, craters, 8-phases, 3D crater relief and halo for billboard rendering
 vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 moonDir, vec3 upVector, int moonPhase, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
     if (rainStrength > 0.92 || sunHeight > 0.18) return vec4(0.0);
 
     float nightFactor = clamp(-sunHeight * 8.0, 0.0, 1.0);
-    float discRadius = 0.50 * MOON_SIZE;
-    vec3 moonBaseColor = vec3(0.90, 0.94, 1.0);
+    float discRadius = 0.48 * MOON_SIZE;
+    vec3 moonBaseColor = vec3(0.92, 0.95, 1.0);
     vec3 moonEmission = vec3(0.0);
     float alpha = 0.0;
 
@@ -104,8 +132,10 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
         vec2 surfaceUV = (localCoord / discRadius) * 1.5 + vec2(1.2, 0.8);
         float maria = fbm2D_Detailed(surfaceUV * 2.4);
         float craterRays = voronoi2D(surfaceUV * 4.2);
-        float albedo = mix(0.52, 1.08, smoothstep(0.36, 0.70, maria));
-        albedo += (1.0 - smoothstep(0.0, 0.12, craterRays)) * 0.28;
+        float microCraters = voronoi2D(surfaceUV * 9.5);
+        float albedo = mix(0.48, 1.10, smoothstep(0.35, 0.68, maria));
+        albedo += (1.0 - smoothstep(0.0, 0.13, craterRays)) * 0.32;
+        albedo += (1.0 - smoothstep(0.0, 0.08, microCraters)) * 0.16;
         #else
         float albedo = 1.0;
         #endif
@@ -123,31 +153,42 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
         float lightTransverse = -sin(phaseAngle);
         vec3 phaseLightDir = normalize(vec3(sunTangentDir * lightTransverse, lightZ));
 
-        float NdotL = dot(sphereNormal, phaseLightDir);
+        #ifdef MOON_CRATER_RELIEF
+        // Procedural 3D normal disturbance for crater rim relief along the terminator line
+        vec2 craterGrad = vec2(
+            voronoi2D((surfaceUV + vec2(0.02, 0.0)) * 6.0) - voronoi2D((surfaceUV - vec2(0.02, 0.0)) * 6.0),
+            voronoi2D((surfaceUV + vec2(0.0, 0.02)) * 6.0) - voronoi2D((surfaceUV - vec2(0.0, 0.02)) * 6.0)
+        );
+        vec3 perturbedNormal = normalize(sphereNormal + vec3(craterGrad * 0.35, 0.0));
+        #else
+        vec3 perturbedNormal = sphereNormal;
+        #endif
+
+        float NdotL = dot(perturbedNormal, phaseLightDir);
         float illumination = smoothstep(-0.06, 0.06, NdotL);
 
         #ifdef MOON_EARTHSHINE
-        illumination += 0.05 * (1.0 - illumination);
+        illumination += 0.06 * (1.0 - illumination);
         #endif
         #else
         float illumination = 1.0;
         #endif
 
-        moonEmission += moonBaseColor * albedo * illumination * 2.6 * edgeAA;
+        moonEmission += moonBaseColor * albedo * illumination * 2.7 * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
     // Lunar atmospheric halo / ice crystal ring
     #ifdef MOON_HALO
-    float haloGlow = exp(-distToCenter * 3.2) * 0.28 * MOON_HALO_INTENSITY;
+    float haloGlow = exp(-distToCenter * 3.0) * 0.32 * MOON_HALO_INTENSITY;
     haloGlow *= mix(1.0, 1.8, biomeAtm.auroraStrength / 1.8);
 
     // 22-degree hexagonal ice crystal halo ring within billboard quad
     float ringR = abs(distToCenter - 0.72);
-    float ringIntensity = (biomeAtm.isCold ? 0.35 : 0.12) * MOON_HALO_INTENSITY;
+    float ringIntensity = (biomeAtm.isCold ? 0.38 : 0.14) * MOON_HALO_INTENSITY;
     float haloRing = exp(-ringR * ringR * 120.0) * ringIntensity;
 
-    vec3 haloColor = vec3(0.55, 0.72, 1.0);
+    vec3 haloColor = vec3(0.58, 0.75, 1.0);
     moonEmission += haloColor * (haloGlow + haloRing);
     alpha = max(alpha, clamp((haloGlow + haloRing) * 1.5, 0.0, 1.0));
     #endif
@@ -322,30 +363,72 @@ vec3 renderBrightStar(vec3 celDir, vec3 starPos, float bv, float brightness, flo
 
 // Procedural dense star background in celestial coordinate space
 // Modulated by local galaxy luminance (Photon technique: stars cluster along the galactic plane)
+// Uses jittered Voronoi cellular distribution with dec-aware longitude scaling to prevent grid alignment & concentric ring artifacts
 vec3 renderProceduralStars(vec3 celDir, float starU, float timeSec, float galaxyLuminance) {
     vec3 starsColor = vec3(0.0);
-    vec2 starUV = vec2(starU, celDir.y * 0.5 + 0.5);
-    vec2 starCell = floor(starUV * 360.0 * STARS_DENSITY);
-    vec2 starFrac = fract(starUV * 360.0 * STARS_DENSITY) - 0.5;
 
-    float starRandom = hash21(starCell);
+    // Declination and Right Ascension projection
+    float dec = asin(clamp(celDir.y, -1.0, 1.0)); // [-pi/2, pi/2]
+    float cosDec = max(cos(dec), 0.08);
 
-    // Dynamic threshold: galactic plane has richer star field (Photon technique)
-    float densityThreshold = clamp(0.81 - galaxyLuminance * 0.40, 0.55, 0.82);
+    // Layer 1: Base high-density background stars
+    {
+        float scale = 360.0 * STARS_DENSITY;
+        vec2 starUV = vec2(starU * scale * cosDec, (dec * INV_PI + 0.5) * scale);
+        vec2 cell = floor(starUV);
+        vec2 frac = fract(starUV) - 0.5;
 
-    if (starRandom > densityThreshold) {
-        float starDist = length(starFrac);
-        float starSize = 0.07 + (starRandom - densityThreshold) * 1.5;
+        // Jitter offset within cell to completely eliminate grid alignment & circular patterns
+        vec2 jitter = hash22(cell) - 0.5;
+        vec2 delta = frac - jitter * 0.76;
 
-        float twinkleSpeed = 2.0 + hash21(starCell + 5.0) * 6.5;
-        vec3 twinkle = calculateStarTwinkle(timeSec, twinkleSpeed, starRandom * 62.8, 0.35);
+        float starRandom = hash21(cell + vec2(1.7, 9.2));
+        float densityThreshold = clamp(0.81 - galaxyLuminance * 0.40, 0.55, 0.82);
 
-        float bv = hash21(starCell + 12.0) * 2.1 - 0.3;
-        vec3 starTint = getStarColorFromBV(bv);
+        if (starRandom > densityThreshold) {
+            float starDist = length(delta);
+            float starSize = 0.08 + (starRandom - densityThreshold) * 1.4;
 
-        float brightness = exp(-starDist * starDist / (starSize * starSize * 0.08));
-        starsColor += starTint * brightness * twinkle * 1.8;
+            float twinkleSpeed = 2.0 + hash21(cell + 5.0) * 6.5;
+            vec3 twinkle = calculateStarTwinkle(timeSec, twinkleSpeed, starRandom * 62.8, 0.35);
+
+            float bv = hash21(cell + 12.0) * 2.1 - 0.3;
+            vec3 starTint = getStarColorFromBV(bv);
+
+            float brightness = exp(-starDist * starDist / (starSize * starSize * 0.08));
+            starsColor += starTint * brightness * twinkle * 1.8;
+        }
     }
+
+    // Layer 2: Secondary decorrelated layer (rotated grid) to break any subtle single-lattice resonance
+    {
+        mat2 rotLayer = mat2(0.7071, -0.7071, 0.7071, 0.7071);
+        float scale2 = 250.0 * STARS_DENSITY;
+        vec2 starUV2 = rotLayer * vec2(starU * scale2 * cosDec, (dec * INV_PI + 0.5) * scale2);
+        vec2 cell2 = floor(starUV2);
+        vec2 frac2 = fract(starUV2) - 0.5;
+
+        vec2 jitter2 = hash22(cell2 + vec2(43.1, 17.5)) - 0.5;
+        vec2 delta2 = frac2 - jitter2 * 0.76;
+
+        float starRandom2 = hash21(cell2 + vec2(8.3, 31.7));
+        float densityThreshold2 = clamp(0.86 - galaxyLuminance * 0.35, 0.65, 0.88);
+
+        if (starRandom2 > densityThreshold2) {
+            float starDist2 = length(delta2);
+            float starSize2 = 0.07 + (starRandom2 - densityThreshold2) * 1.3;
+
+            float twinkleSpeed2 = 1.8 + hash21(cell2 + 9.0) * 5.5;
+            vec3 twinkle2 = calculateStarTwinkle(timeSec, twinkleSpeed2, starRandom2 * 51.4, 0.30);
+
+            float bv2 = hash21(cell2 + 7.0) * 2.0 - 0.25;
+            vec3 starTint2 = getStarColorFromBV(bv2);
+
+            float brightness2 = exp(-starDist2 * starDist2 / (starSize2 * starSize2 * 0.08));
+            starsColor += starTint2 * brightness2 * twinkle2 * 1.5;
+        }
+    }
+
     return starsColor;
 }
 
@@ -389,6 +472,15 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     // Luminance-preserving saturation boost for vibrant dust lanes and nebulae
     galaxyLuminance = dot(mwColor, vec3(0.2126, 0.7152, 0.0722));
     mwColor = mix(vec3(galaxyLuminance), mwColor, 1.85);
+
+    #ifdef MILKY_WAY_H_ALPHA
+    // Hydrogen-alpha (656.3 nm) deep red/magenta emission nebula enhancement
+    // Prominently enhances emission regions like Carina, Orion, Barnard's Loop, and Cygnus
+    float hAlphaMask = clamp(mwSample.r * 1.8 - (mwSample.g + mwSample.b) * 0.9, 0.0, 1.0);
+    vec3 hAlphaColor = vec3(1.0, 0.18, 0.38) * hAlphaMask * 0.45 * MILKY_WAY_BRIGHTNESS;
+    mwColor += hAlphaColor;
+    #endif
+
     mwColor = max(mwColor, vec3(0.0));
     
     starsColor += mwColor;
@@ -499,16 +591,23 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
             float curtain = abs(auroraUV.y * 0.38 + wave1 * 0.15 + wave2 * 0.08 + wave3 * 0.04 + auroraFbm * 0.18);
             curtain = exp(-curtain * 16.0);
 
-            vec3 greenEmerald  = vec3(0.12, 0.88, 0.45);
-            vec3 violetMagenta = vec3(0.68, 0.18, 0.88);
-            vec3 crimsonTop    = vec3(0.85, 0.15, 0.25);
+            #ifdef AURORA_RAY_STREAMERS
+            // High-frequency vertical magnetic field streamers
+            float rayPattern = sin(auroraUV.x * 32.0 + timeSec * 0.8) * 0.5 + 0.5;
+            rayPattern *= sin(auroraUV.x * 75.0 - timeSec * 1.4) * 0.5 + 0.5;
+            curtain *= mix(0.72, 1.45, rayPattern);
+            #endif
+
+            vec3 greenEmerald  = vec3(0.12, 0.92, 0.45);
+            vec3 violetMagenta = vec3(0.70, 0.18, 0.90);
+            vec3 crimsonTop    = vec3(0.88, 0.15, 0.25);
 
             float vGrad1 = smoothstep(0.06, 0.26, sphereDir.y);
             float vGrad2 = smoothstep(0.24, 0.48, sphereDir.y);
             vec3 auroraColor = mix(greenEmerald, violetMagenta, vGrad1);
             auroraColor = mix(auroraColor, crimsonTop, vGrad2);
 
-            starsColor += auroraColor * curtain * heightFactor * northFactor * 0.85 * auroraStrength;
+            starsColor += auroraColor * curtain * heightFactor * northFactor * 0.90 * auroraStrength;
         }
     }
     #endif
