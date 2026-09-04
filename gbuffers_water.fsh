@@ -10,7 +10,6 @@ uniform sampler2D texture;
 uniform mat4 gbufferModelViewInverse;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float frameTimeCounter;
@@ -30,11 +29,11 @@ void main() {
 
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight  = dot(sunDir, upVector);
-    float moonHeight = dot(moonDir, upVector);
+    float sunHeight  = dot(sunDir, WORLD_UP);
+    float moonHeight = dot(moonDir, WORLD_UP);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
+    float stormAzimuth = getStormLightningAzimuth(frameTimeCounter);
 
     // Smooth biome transition
     BiomeAtmosphere biomeAtm = getSmoothBiomeAtmosphere(biome_category, biome, fogColor);
@@ -54,7 +53,7 @@ void main() {
 
     // Sky and sun reflections with smoothly blended biome atmospheric coloring
     vec3 reflectDir = reflect(-viewDir, waveNormal);
-    vec3 reflectedSky = calculateAtmosphericSky(reflectDir, sunDir, moonDir, upVector, rainStrength, stormLightning, biomeAtm);
+    vec3 reflectedSky = calculateAtmosphericSky(reflectDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, stormAzimuth, biomeAtm);
 
     // Specular sun glint
     vec3 sunHalf = normalize(viewDir + sunDir);

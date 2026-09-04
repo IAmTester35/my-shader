@@ -11,12 +11,9 @@ uniform mat4 gbufferModelViewInverse;
 
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float frameTimeCounter;
-uniform float near;
-uniform float far;
 uniform int biome_category;
 uniform int biome;
 
@@ -34,9 +31,8 @@ void main() {
 
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight = dot(sunDir, upVector);
+    float sunHeight = dot(sunDir, WORLD_UP);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
 
     // Smooth continuous biome transition across chunk boundaries
@@ -50,7 +46,7 @@ void main() {
     if (depth >= 0.9999) {
         // === SKY PIXELS ===
         // True Volumetric 3D Raymarched Clouds with smoothly blended biome adaptations
-        CloudResult clouds = renderVolumetric3DClouds(rayDir, sunDir, moonDir, upVector, rainStrength, stormLightning, frameTimeCounter, biomeAtm);
+        CloudResult clouds = renderVolumetric3DClouds(rayDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, frameTimeCounter, biomeAtm);
         finalColor = mix(finalColor, clouds.color.rgb, clouds.color.a);
     } else {
         // === TERRAIN & WORLD PIXELS ===
@@ -58,7 +54,7 @@ void main() {
         float distanceToCam = length(viewPos);
 
         // Biome-aware atmospheric fog color
-        vec3 fogAtmColor = getAtmosphericFogColor(rayDir, sunDir, moonDir, upVector, rainStrength, stormLightning, biomeAtm);
+        vec3 fogAtmColor = getAtmosphericFogColor(rayDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, biomeAtm);
 
         // Distance fog & rain/sandstorm weather fog
         float baseFog = 1.0 - exp(-distanceToCam * 0.0012 * biomeAtm.hazeDensity);
@@ -73,7 +69,7 @@ void main() {
     if (rainStrength < 0.85) {
         bool useSun = (sunHeight > -0.08);
         vec3 lightPosEye = useSun ? sunPosition : moonPosition;
-        float lightHeight = useSun ? sunHeight : dot(moonDir, upVector);
+        float lightHeight = useSun ? sunHeight : dot(moonDir, WORLD_UP);
 
         if (lightPosEye.z < 0.0 && lightHeight > -0.10) {
             vec4 lightClip = gbufferProjection * vec4(lightPosEye, 1.0);
@@ -84,13 +80,12 @@ void main() {
                 vec2 deltaUV = (lightUV - texCoord) / 16.0;
                 // Screen-space Blue Noise jitter (Moments in Graphics) to eliminate stepping and white-noise grain
                 float jitter = getRaymarchJitter(gl_FragCoord.xy, frameTimeCounter);
-                vec2 sampleCoord = texCoord + deltaUV * jitter;
 
                 float rayDensity = 0.0;
                 float decay = 1.0;
 
                 for (int i = 0; i < 16; ++i) {
-                    sampleCoord += deltaUV;
+                    vec2 sampleCoord = texCoord + deltaUV * (float(i) + jitter);
                     float d = texture2D(depthtex0, sampleCoord).r;
                     if (d >= 0.9999) {
                         rayDensity += decay;

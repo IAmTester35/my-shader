@@ -29,12 +29,12 @@ float sampleCloudDensity3D(vec3 worldPos, float relHeight, float rain, float tim
     vec3 wind = vec3(timeSec * 0.018, 0.0, timeSec * 0.008) * CLOUD_SPEED;
     vec3 p = (worldPos + wind * 40.0) * 0.0018;
 
-    // Base fractal shape (Low-frequency 3D noise)
-    float baseFbm = fbm3D(p);
-    
     // Coverage threshold adapted to biome and rain
     float baseCoverage = mix(0.48 / CLOUD_DENSITY, 0.20, rain * 0.85);
     baseCoverage = mix(baseCoverage * 1.4, baseCoverage * 0.75, saturate(biomeAtm.cloudCoverage - 0.5));
+
+    // High-speed early-out 3D FBM (skips high octaves in empty air)
+    float baseFbm = fbm3D_Fast(p, baseCoverage);
 
     float density = smoothstep(baseCoverage, baseCoverage + 0.35, baseFbm);
     density *= heightGradient;
@@ -107,12 +107,14 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
 
     if (visibility <= 0.01) return res;
 
+    // Moments in Graphics Blue Noise jitter along view ray to eliminate slice banding
+    float jitter = getRaymarchJitter(gl_FragCoord.xy, timeSec);
+    vec3 mainLightDir = (sunHeight > -0.05) ? sunDir : moonDir;
+
     // Volumetric Raymarch Loop
     for (int i = 0; i < STEPS; ++i) {
         if (transmittance < 0.02) break; // Early ray termination
 
-        // Moments in Graphics Blue Noise jitter along view ray to eliminate slice banding
-        float jitter = getRaymarchJitter(gl_FragCoord.xy, timeSec);
         float t = tStart + stepSize * (float(i) + jitter);
         vec3 pos = rayDir * t;
         float relHeight = saturate((pos.y - cloudBottom) / layerThickness);
@@ -120,9 +122,9 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
         float density = sampleCloudDensity3D(pos, relHeight, rain, timeSec, biomeAtm);
 
         if (density > 0.005) {
-            // Secondary light ray march towards the sun for self-shadowing
+            // Secondary light ray march towards active light source for self-shadowing
             #ifdef CLOUD_SHADOWING
-            vec3 lightPos = pos + sunDir * 28.0;
+            vec3 lightPos = pos + mainLightDir * 28.0;
             float lightRelH = saturate((lightPos.y - cloudBottom) / layerThickness);
             float lightDensity = sampleCloudDensity3D(lightPos, lightRelH, rain, timeSec, biomeAtm);
             
@@ -150,12 +152,11 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
                 #ifdef DESERT_SANDSTORM
                 if (biomeAtm.isArid) {
                     stepRadiance = mix(stepRadiance, vec3(0.65, 0.42, 0.22), rain * 0.90);
-                } else {
+                } else
+                #endif
+                {
                     stepRadiance = mix(stepRadiance, vec3(0.18, 0.20, 0.24), rain * 0.88);
                 }
-                #else
-                stepRadiance = mix(stepRadiance, vec3(0.18, 0.20, 0.24), rain * 0.88);
-                #endif
 
                 #ifdef STORM_LIGHTNING
                 if (stormLightning > 0.01) {

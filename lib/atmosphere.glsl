@@ -14,7 +14,7 @@
 
 // Phase functions
 float rayleighPhase(float cosTheta) {
-    return (3.0 / (16.0 * PI)) * (1.0 + cosTheta * cosTheta);
+    return 0.75 + 0.50 * cosTheta * cosTheta;
 }
 
 float hgPhase(float cosTheta, float g) {
@@ -27,9 +27,26 @@ float dualHgPhase(float cosTheta, float g1, float g2, float k) {
     return mix(hgPhase(cosTheta, g1), hgPhase(cosTheta, g2), k);
 }
 
-// Forward declarations for celestial light colors
-vec3 getSunColor(float sunHeight, float rain);
-vec3 getMoonColor(float moonHeight, float rain);
+// Direct celestial light colors
+vec3 getSunColor(float sunHeight, float rain) {
+    vec3 middaySun = vec3(1.00, 0.98, 0.92) * 1.5;
+    vec3 sunsetSun = vec3(1.00, 0.42, 0.08) * 1.2;
+    vec3 nightSun  = vec3(0.0);
+
+    float dayFactor = clamp(sunHeight * 4.0, 0.0, 1.0);
+    vec3 light = mix(sunsetSun, middaySun, dayFactor);
+    light = mix(nightSun, light, clamp((sunHeight + 0.05) * 10.0, 0.0, 1.0));
+    
+    light *= (1.0 - rain * 0.75);
+    return light;
+}
+
+vec3 getMoonColor(float moonHeight, float rain) {
+    vec3 moonLight = vec3(0.25, 0.38, 0.60) * 0.22;
+    moonLight *= clamp((moonHeight + 0.05) * 10.0, 0.0, 1.0);
+    moonLight *= (1.0 - rain * 0.80);
+    return moonLight;
+}
 
 // Sky color evaluation for any view ray in world space (with optional directional lightning azimuth)
 vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float stormAzimuth, BiomeAtmosphere biomeAtm) {
@@ -74,8 +91,7 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
 
     #ifdef RAYLEIGH_SCATTERING
     // Physical Rayleigh scattering phase: brightens forward (near sun) and backward (anti-solar), dips at 90°
-    float rPhase = 0.75 + 0.50 * cosSun * cosSun;
-    daySky *= mix(1.0, rPhase, clamp(sunHeight * 2.5, 0.0, 1.0));
+    daySky *= mix(1.0, rayleighPhase(cosSun), clamp(sunHeight * 2.5, 0.0, 1.0));
     #endif
 
     // Sunset directional glow
@@ -113,7 +129,9 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
             // Desert sandstorm / dust storm: howling ochre & terracotta haze
             vec3 sandstormColor = vec3(0.78, 0.52, 0.28) * mix(0.15, 1.0, dayFactor);
             skyColor = mix(skyColor, sandstormColor, rain * 0.92);
-        } else {
+        } else
+        #endif
+        {
             // Standard rain / snow overcast
             vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
             vec3 overcastNight = vec3(0.018, 0.022, 0.032);
@@ -121,13 +139,6 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
             overcast *= mix(1.0, 0.68, horizonFactor);
             skyColor = mix(skyColor, overcast, rain * 0.90);
         }
-        #else
-        vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
-        vec3 overcastNight = vec3(0.018, 0.022, 0.032);
-        vec3 overcast = mix(overcastNight, overcastDay, dayFactor);
-        overcast *= mix(1.0, 0.68, horizonFactor);
-        skyColor = mix(skyColor, overcast, rain * 0.90);
-        #endif
 
         #ifdef STORM_LIGHTNING
         if (stormLightning > 0.01) {
@@ -165,27 +176,6 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
 vec3 getAtmosphericFogColor(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
     vec3 horizonDir = normalize(vec3(rayDir.x, max(rayDir.y * 0.25, 0.02), rayDir.z));
     return calculateAtmosphericSky(horizonDir, sunDir, moonDir, upVector, rain, stormLightning, biomeAtm);
-}
-
-// Direct celestial light colors
-vec3 getSunColor(float sunHeight, float rain) {
-    vec3 middaySun = vec3(1.00, 0.98, 0.92) * 1.5;
-    vec3 sunsetSun = vec3(1.00, 0.42, 0.08) * 1.2;
-    vec3 nightSun  = vec3(0.0);
-
-    float dayFactor = clamp(sunHeight * 4.0, 0.0, 1.0);
-    vec3 light = mix(sunsetSun, middaySun, dayFactor);
-    light = mix(nightSun, light, clamp((sunHeight + 0.05) * 10.0, 0.0, 1.0));
-    
-    light *= (1.0 - rain * 0.75);
-    return light;
-}
-
-vec3 getMoonColor(float moonHeight, float rain) {
-    vec3 moonLight = vec3(0.25, 0.38, 0.60) * 0.22;
-    moonLight *= clamp((moonHeight + 0.05) * 10.0, 0.0, 1.0);
-    moonLight *= (1.0 - rain * 0.80);
-    return moonLight;
 }
 
 #endif // ATMOSPHERE_GLSL

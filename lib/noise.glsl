@@ -38,12 +38,6 @@ vec2 hash22(vec2 p) {
     return fract((p3.xx + p3.yz) * p3.zy);
 }
 
-float hash31(vec3 p) {
-    vec3 p3 = fract(p * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
 vec3 hash33(vec3 p) {
     p = fract(p * vec3(0.1031, 0.1030, 0.0973));
     p += dot(p, p.yxz + 33.33);
@@ -56,13 +50,10 @@ vec2 grad2(vec2 p) {
     return vec2(cos(a), sin(a));
 }
 
-// 3D Unit Gradient Generator (Uniformly distributed on sphere S2)
+// High-performance 3D Unit Gradient Generator (Trigonometry-free for GPU efficiency)
 vec3 grad3(vec3 p) {
-    vec3 h = hash33(p);
-    float z = 1.0 - 2.0 * h.x;
-    float r = sqrt(max(0.0, 1.0 - z * z));
-    float phi = 6.28318530718 * h.y;
-    return vec3(r * cos(phi), r * sin(phi), z);
+    vec3 h = hash33(p) * 2.0 - 1.0;
+    return normalize(h);
 }
 
 // --- 2. C2-CONTINUOUS GRADIENT NOISE (PERLIN / QUINTIC HERMITE) ---
@@ -110,15 +101,6 @@ float gradientNoise3D(vec3 p) {
     return n * 0.57735027 + 0.5; // Map [-sqrt(3)/2, sqrt(3)/2] to [0, 1]
 }
 
-// Backward-compatible API aliases mapped to superior gradient noise
-float valueNoise2D(vec2 p) {
-    return gradientNoise2D(p);
-}
-
-float valueNoise3D(vec3 p) {
-    return gradientNoise3D(p);
-}
-
 // --- 3. FRACTAL BROWNIAN MOTION (FBM) ---
 
 // 2D Fractal Brownian Motion - 4 octaves with decorrelated rotation
@@ -147,15 +129,20 @@ float fbm2D_Detailed(vec2 p) {
     return v;
 }
 
-// 3D Fractal Brownian Motion - 4 octaves
-float fbm3D(vec3 p) {
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 4; ++i) {
-        v += a * gradientNoise3D(p);
-        p = p * 2.02 + vec3(1.23, 2.45, 3.67);
-        a *= 0.5;
-    }
+// High-performance early-out 3D FBM for volumetric cloud raymarching
+// Bypasses upper octaves when local density cannot reach cloud threshold
+float fbm3D_Fast(vec3 p, float cutoff) {
+    float v = 0.5 * gradientNoise3D(p);
+    p = p * 2.02 + vec3(1.23, 2.45, 3.67);
+    v += 0.25 * gradientNoise3D(p);
+    
+    // If macro density cannot reach the cloud boundary, early-exit
+    if (v + 0.19 < cutoff) return v;
+    
+    p = p * 2.02 + vec3(1.23, 2.45, 3.67);
+    v += 0.125 * gradientNoise3D(p);
+    p = p * 2.02 + vec3(1.23, 2.45, 3.67);
+    v += 0.0625 * gradientNoise3D(p);
     return v;
 }
 
@@ -181,11 +168,6 @@ float voronoi2D(vec2 p) {
 
 // Converts uniform [0, 1] noise into a symmetric triangular distribution on [-1, 1] (TPDF)
 // with maximum probability density at 0, per Christoph Peters (Moments in Graphics)
-float toTriangularPDF(float u) {
-    u = u * 2.0 - 1.0;
-    return sign(u) * (1.0 - sqrt(max(0.0, 1.0 - abs(u))));
-}
-
 vec3 toTriangularPDF(vec3 u) {
     u = u * 2.0 - 1.0;
     return sign(u) * (vec3(1.0) - sqrt(max(vec3(0.0), vec3(1.0) - abs(u))));
@@ -196,13 +178,6 @@ vec3 toTriangularPDF(vec3 u) {
 float blueNoiseIGN(vec2 screenPos, float frameCount) {
     vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
     return fract(magic.z * fract(dot(screenPos + frameCount * vec2(47.0, 17.0), magic.xy)));
-}
-
-// Samples Christoph Peters' 64x64 Void-and-Cluster Blue Noise texture with temporal R2 rotation
-vec4 sampleBlueNoiseTex(sampler2D noiseTexture, vec2 screenPos, float frameCount) {
-    vec2 temporalOffset = fract(vec2(frameCount * 0.754877666, frameCount * 0.569840290));
-    vec2 uv = mod(screenPos, 64.0) / 64.0 + temporalOffset;
-    return texture2D(noiseTexture, uv);
 }
 
 // Raymarching jitter generator:

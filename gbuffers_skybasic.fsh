@@ -1,12 +1,10 @@
 #version 120
 
 varying vec3 worldPos;
-varying vec4 vertexColor;
 
 uniform mat4 gbufferModelViewInverse;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float frameTimeCounter;
@@ -26,9 +24,8 @@ void main() {
     vec3 rayDir = normalize(worldPos);
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight = dot(sunDir, upVector);
+    float sunHeight = dot(sunDir, WORLD_UP);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
     float stormAzimuth = getStormLightningAzimuth(frameTimeCounter);
 
@@ -36,7 +33,7 @@ void main() {
     BiomeAtmosphere biomeAtm = getSmoothBiomeAtmosphere(biome_category, biome, fogColor);
 
     // 1. Rayleigh, Mie & Ozone atmospheric sky gradient with smoothly blended biome tint
-    vec3 skyColor = calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rainStrength, stormLightning, stormAzimuth, biomeAtm);
+    vec3 skyColor = calculateAtmosphericSky(rayDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, stormAzimuth, biomeAtm);
 
     // 2. Stars, Milky Way Galaxy band, Meteors, and Multi-Layer Aurora Borealis (NASA SVS 4851)
     vec3 stars = renderStarsAndMilkyWay(rayDir, sunHeight, rainStrength, frameTimeCounter, worldTime, biomeAtm);

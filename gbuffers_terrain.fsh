@@ -4,13 +4,11 @@ varying vec2 texCoord;
 varying vec2 lmcoord;
 varying vec4 vertexColor;
 varying vec3 normal;
-varying vec3 worldPos;
 
 uniform sampler2D texture;
 uniform mat4 gbufferModelViewInverse;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float wetness;
@@ -31,10 +29,9 @@ void main() {
 
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight  = dot(sunDir, upVector);
-    float moonHeight = dot(moonDir, upVector);
+    float sunHeight  = dot(sunDir, WORLD_UP);
+    float moonHeight = dot(moonDir, WORLD_UP);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
 
     // Smooth biome transition
@@ -54,7 +51,7 @@ void main() {
     vec3 directLight = (sunLight + moonLight) * skyExposure;
 
     // Ambient lighting matching atmospheric sky color & smooth biome
-    vec3 skyAmbient = getAtmosphericFogColor(normal, sunDir, moonDir, upVector, rainStrength, stormLightning, biomeAtm);
+    vec3 skyAmbient = getAtmosphericFogColor(normal, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, biomeAtm);
     skyAmbient *= (0.22 + 0.40 * lmcoord.y);
 
     // Warm block light (torches, lanterns)
@@ -65,7 +62,7 @@ void main() {
 
     #ifdef STORM_LIGHTNING
     if (stormLightning > 0.01) {
-        float upward = max(dot(normal, upVector) * 0.5 + 0.5, 0.0);
+        float upward = max(dot(normal, WORLD_UP) * 0.5 + 0.5, 0.0);
         directLight += vec3(0.92, 0.96, 1.15) * stormLightning * upward * skyExposure * 2.4;
     }
     #endif

@@ -267,23 +267,39 @@ vec3 worldToCelestial(vec3 worldDir, int worldTimeTicks) {
     return normalize(vec3(xCel, yCel, zCel));
 }
 
-// Convert Celestial unit vector to NASA SVS 4851 plate carrée equirectangular UV
-// Centered at 0h RA, RA increases to the left
+// Fast & precise inverse sRGB EOTF (HLSL / Jim Cowlishaw approximation)
+// Maps non-linear sRGB texture data to physical linear HDR radiometric space
+vec3 srgbToLinear(vec3 srgb) {
+    return srgb * (srgb * (srgb * 0.305306011 + 0.682171111) + 0.012522878);
+}
+
+// Convert Celestial unit vector to NASA SVS equirectangular UV coordinates
+// Matches standard celestial panorama mapping used in Photon Shader
 vec2 celestialToNASA_UV(vec3 celDir) {
-    float dec = asin(clamp(celDir.y, -1.0, 1.0));
-    float v = dec * INV_PI + 0.5;
-
-    float ra = atan(celDir.z, celDir.x);
-    float u = fract(0.5 - ra * (0.5 * INV_PI));
-
-    return vec2(u, v);
+    float lon = atan(celDir.x, celDir.z);
+    float lat = acos(clamp(-celDir.y, -1.0, 1.0));
+    return vec2(lon * (0.5 * INV_PI) + 0.5, lat * INV_PI);
 }
 
 vec3 raDecToCel(float raHours, float decDeg) {
     float raRad = raHours * (TWO_PI / 24.0);
     float decRad = radians(decDeg);
     float cosDec = cos(decRad);
-    return vec3(cosDec * cos(raRad), sin(decRad), cosDec * sin(raRad));
+    return vec3(cosDec * sin(raRad), sin(decRad), cosDec * cos(raRad));
+}
+
+// Consolidated chromatic twinkling calculation for stars (SSOC)
+vec3 calculateStarTwinkle(float timeSec, float speed, float phase, float amp) {
+    #ifdef STARS_TWINKLE
+    float p = timeSec * speed + phase;
+    return vec3(
+        sin(p + 0.0) * amp + (1.0 - amp),
+        sin(p + 0.4) * amp + (1.0 - amp),
+        sin(p + 0.8) * amp + (1.0 - amp)
+    );
+    #else
+    return vec3(1.0);
+    #endif
 }
 
 vec3 renderBrightStar(vec3 celDir, vec3 starPos, float bv, float brightness, float size, float timeSec, float seed) {
@@ -294,15 +310,8 @@ vec3 renderBrightStar(vec3 celDir, vec3 starPos, float bv, float brightness, flo
     float radius = size * 0.0019;
     if (angle > radius * 6.0) return vec3(0.0);
 
-    #ifdef STARS_TWINKLE
     float twinkleSpeed = 3.2 + hash11(seed * 19.3) * 5.5;
-    float twR = sin(timeSec * twinkleSpeed + seed * 6.28 + 0.0) * 0.32 + 0.68;
-    float twG = sin(timeSec * twinkleSpeed + seed * 6.28 + 0.4) * 0.32 + 0.68;
-    float twB = sin(timeSec * twinkleSpeed + seed * 6.28 + 0.8) * 0.32 + 0.68;
-    vec3 twinkle = vec3(twR, twG, twB);
-    #else
-    vec3 twinkle = vec3(1.0);
-    #endif
+    vec3 twinkle = calculateStarTwinkle(timeSec, twinkleSpeed, seed * 6.28, 0.32);
 
     vec3 starColor = getStarColorFromBV(bv);
     float core = exp(-angle / (radius * 0.42)) * 4.2;
@@ -312,27 +321,24 @@ vec3 renderBrightStar(vec3 celDir, vec3 starPos, float bv, float brightness, flo
 }
 
 // Procedural dense star background in celestial coordinate space
-vec3 renderProceduralStars(vec3 celDir, float timeSec) {
+// Modulated by local galaxy luminance (Photon technique: stars cluster along the galactic plane)
+vec3 renderProceduralStars(vec3 celDir, float starU, float timeSec, float galaxyLuminance) {
     vec3 starsColor = vec3(0.0);
-    vec2 starUV = vec2(atan(celDir.z, celDir.x) * INV_PI * 0.5 + 0.5, celDir.y * 0.5 + 0.5);
+    vec2 starUV = vec2(starU, celDir.y * 0.5 + 0.5);
     vec2 starCell = floor(starUV * 360.0 * STARS_DENSITY);
     vec2 starFrac = fract(starUV * 360.0 * STARS_DENSITY) - 0.5;
 
     float starRandom = hash21(starCell);
 
-    if (starRandom > 0.81) {
-        float starDist = length(starFrac);
-        float starSize = 0.07 + (starRandom - 0.81) * 1.5;
+    // Dynamic threshold: galactic plane has richer star field (Photon technique)
+    float densityThreshold = clamp(0.81 - galaxyLuminance * 0.40, 0.55, 0.82);
 
-        #ifdef STARS_TWINKLE
+    if (starRandom > densityThreshold) {
+        float starDist = length(starFrac);
+        float starSize = 0.07 + (starRandom - densityThreshold) * 1.5;
+
         float twinkleSpeed = 2.0 + hash21(starCell + 5.0) * 6.5;
-        float twR = sin(timeSec * twinkleSpeed + starRandom * 62.8 + 0.0) * 0.35 + 0.65;
-        float twG = sin(timeSec * twinkleSpeed + starRandom * 62.8 + 0.4) * 0.35 + 0.65;
-        float twB = sin(timeSec * twinkleSpeed + starRandom * 62.8 + 0.8) * 0.35 + 0.65;
-        vec3 twinkle = vec3(twR, twG, twB);
-        #else
-        vec3 twinkle = vec3(1.0);
-        #endif
+        vec3 twinkle = calculateStarTwinkle(timeSec, twinkleSpeed, starRandom * 62.8, 0.35);
 
         float bv = hash21(starCell + 12.0) * 2.1 - 0.3;
         vec3 starTint = getStarColorFromBV(bv);
@@ -351,9 +357,14 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
 
     if (rain > 0.4 || sunHeight > -0.04 || rayDir.y < 0.0) return vec3(0.0);
 
-    float nightStrength = clamp(-sunHeight * 12.0 - 0.2, 0.0, 1.0);
-    float horizonMask   = smoothstep(0.02, 0.25, rayDir.y);
-    float visibility    = nightStrength * horizonMask * (1.0 - rain * 2.0);
+    // Smooth night transition curve without harsh steps
+    float nightStrength = clamp(-sunHeight * 10.0 - 0.1, 0.0, 1.0);
+    
+    // Physical atmospheric extinction along view ray (thick air at horizon dims celestials)
+    float opticalAirMass = 1.0 / max(rayDir.y + 0.08, 0.08);
+    float atmExtinction  = exp(-0.06 * opticalAirMass);
+    float horizonMask    = smoothstep(0.015, 0.22, rayDir.y) * atmExtinction;
+    float visibility     = nightStrength * horizonMask * (1.0 - rain * 2.0);
     if (visibility <= 0.0) return vec3(0.0);
 
     vec3 sphereDir = normalize(rayDir);
@@ -361,14 +372,26 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     vec2 nasaUV = celestialToNASA_UV(celDir);
 
     vec3 starsColor = vec3(0.0);
+    float galaxyLuminance = 0.0;
 
-    // 1. Milky Way Galaxy Band (NASA SVS 4851 Gaia/Tycho composite texture with procedural fallback)
+    // 1. Milky Way Galaxy Band (Photon-style Linear decoding & luminance-preserving saturation)
     #ifdef MILKY_WAY
     #ifdef NASA_SVS_MILKY_WAY
     vec4 mwSample = texture2D(milkyway, nasaUV);
-    // Dynamic contrast & cosmic dust richness enhancement
-    vec3 mwColor = pow(mwSample.rgb, vec3(1.10)) * 2.1;
-    starsColor += mwColor * MILKY_WAY_BRIGHTNESS;
+    
+    // Inverse sRGB EOTF: prevents black space from turning into a bright hazy fog
+    vec3 mwLinear = srgbToLinear(mwSample.rgb);
+    
+    // Celestial tint (Photon palette: subtle cosmic blue-violet galactic tint)
+    const vec3 galaxyTint = vec3(0.78, 0.72, 1.0);
+    vec3 mwColor = mwLinear * galaxyTint * MILKY_WAY_BRIGHTNESS;
+    
+    // Luminance-preserving saturation boost for vibrant dust lanes and nebulae
+    galaxyLuminance = dot(mwColor, vec3(0.2126, 0.7152, 0.0722));
+    mwColor = mix(vec3(galaxyLuminance), mwColor, 1.85);
+    mwColor = max(mwColor, vec3(0.0));
+    
+    starsColor += mwColor;
     #else
     // Procedural fallback Milky Way
     mat3 galRot = mat3(
@@ -392,7 +415,8 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
         vec3 galacticDustColor = vec3(0.48, 0.26, 0.42);
         vec3 mwColor = mix(galacticCoreColor, galacticDustColor, dustLaneNoise);
 
-        starsColor += mwColor * bandProfile * emission * 0.42 * MILKY_WAY_BRIGHTNESS;
+        galaxyLuminance = bandProfile * emission * 0.42 * MILKY_WAY_BRIGHTNESS;
+        starsColor += mwColor * galaxyLuminance;
     }
     #endif
     #endif
@@ -417,8 +441,8 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     }
     #endif
 
-    // 4. Procedural Dense Star Field with Ballesteros Blackbody Colors
-    starsColor += renderProceduralStars(celDir, timeSec);
+    // 4. Procedural Dense Star Field with Ballesteros Blackbody Colors & Galactic Concentration
+    starsColor += renderProceduralStars(celDir, nasaUV.x, timeSec, galaxyLuminance);
 
     // 5. Prominent Real Stars (Hipparcos Catalog with Ballesteros B-V Photometry)
     // Sirius (Canis Major): RA 6.75h, Dec -16.7°, B-V 0.00

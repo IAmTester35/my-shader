@@ -4,7 +4,6 @@ varying vec2 texCoord;
 varying vec2 lmcoord;
 varying vec4 vertexColor;
 varying vec3 normal;
-varying vec3 worldPos;
 
 uniform mat4 gbufferModelViewInverse;
 
@@ -16,7 +15,4 @@ void main() {
     
     // Normal in eye space converted to world space
     normal = normalize((gbufferModelViewInverse * vec4(gl_NormalMatrix * gl_Normal, 0.0)).xyz);
-
-    vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
-    worldPos = (gbufferModelViewInverse * viewPos).xyz;
 }

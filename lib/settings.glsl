@@ -44,7 +44,7 @@
 #define STARS_COLOR_VARIETY         // Spectral star classifications via Ballesteros blackbody spectrum
 #define NASA_SVS_MILKY_WAY          // NASA SVS 4851 photographic Milky Way from 1.7B stars (Gaia DR2/Tycho-2)
 #define MILKY_WAY                   // Enable Milky Way galactic band rendering
-#define MILKY_WAY_BRIGHTNESS 1.2    // [0.5 0.75 1.0 1.2 1.5 2.0] Visibility of galactic band
+#define MILKY_WAY_BRIGHTNESS 0.75   // [0.2 0.4 0.6 0.75 1.0 1.2 1.5 2.0] Visibility of galactic band
 //#define CONSTELLATION_FIGURES     // IAU official constellation stick figures (NASA SVS 4851)
 #define CONSTELLATION_INTENSITY 1.0 // [0.5 0.75 1.0 1.25 1.5] Constellation line brightness
 //#define CELESTIAL_GRID            // Equatorial celestial coordinate grid (RA/Dec J2000)

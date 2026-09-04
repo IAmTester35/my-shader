@@ -8,10 +8,8 @@ uniform sampler2D texture;
 uniform mat4 gbufferModelViewInverse;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
-uniform float frameTimeCounter;
 uniform int moonPhase;
 uniform int biome_category;
 uniform int biome;
@@ -27,9 +25,8 @@ void main() {
     vec3 rayDir = normalize(worldPos);
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight = dot(sunDir, upVector);
+    float sunHeight = dot(sunDir, WORLD_UP);
     bool isSun = dot(rayDir, sunDir) > dot(rayDir, moonDir);
 
     // Smoothly interpolated biome climate profile
@@ -52,7 +49,7 @@ void main() {
     } else {
         // === MOON RENDERING ===
         #ifdef ENABLE_MOON
-        finalColor = renderMoonBillboard(localCoord, distToCenter, sunDir, moonDir, upVector, moonPhase, sunHeight, rainStrength, biomeAtm);
+        finalColor = renderMoonBillboard(localCoord, distToCenter, sunDir, moonDir, WORLD_UP, moonPhase, sunHeight, rainStrength, biomeAtm);
         #else
         // Fallback to resource-pack / vanilla moon texture
         finalColor = texture2D(texture, texCoord) * vertexColor;

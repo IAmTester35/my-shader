@@ -9,7 +9,6 @@ uniform sampler2D texture;
 uniform mat4 gbufferModelViewInverse;
 uniform vec3 sunPosition;
 uniform vec3 moonPosition;
-uniform vec3 upPosition;
 uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float frameTimeCounter;
@@ -29,10 +28,9 @@ void main() {
 
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
-    vec3 upVector = normalize(upPosition);
 
-    float sunHeight = dot(sunDir, upVector);
-    float moonHeight = dot(moonDir, upVector);
+    float sunHeight = dot(sunDir, WORLD_UP);
+    float moonHeight = dot(moonDir, WORLD_UP);
     float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
 
     // Smooth biome transition
@@ -41,7 +39,7 @@ void main() {
     // Light colors from celestial bodies & sky
     vec3 sunLight  = getSunColor(sunHeight, rainStrength);
     vec3 moonLight = getMoonColor(moonHeight, rainStrength);
-    vec3 skyLight  = getAtmosphericFogColor(normalize(worldPos), sunDir, moonDir, upVector, rainStrength, stormLightning, biomeAtm);
+    vec3 skyLight  = getAtmosphericFogColor(normalize(worldPos), sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, biomeAtm);
 
     // Lightmap brightness (sky light & torch light)
     float skyLightmap   = clamp(lmcoord.y * 1.1, 0.0, 1.0);
