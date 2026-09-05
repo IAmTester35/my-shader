@@ -239,17 +239,30 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
         float density = sampleCloudDensity3D(pos, relHeight, genus, rain, timeSec, biomeAtm);
 
         if (density > 0.008) {
-            // Directional light raymarch for self-shadowing and volumetric depth
+            // Directional light raymarch for self-shadowing and volumetric depth (Multi-Step Exponential Cone)
             #ifdef CLOUD_SHADOWING
-            vec3 lightPos = pos + mainLightDir * 36.0;
-            float lightRelH = saturate((lightPos.y - cloudBottom) / layerThickness);
-            float lightDensity = sampleCloudDensity3D(lightPos, lightRelH, genus, rain, timeSec, biomeAtm);
+            float optDepthLight = 0.0;
             
-            // Beer-Lambert attenuation along light ray
-            float lightTransmittance = exp(-lightDensity * 3.8);
+            // Step 1: 18m local density & rim occlusion
+            vec3 lp1 = pos + mainLightDir * 18.0;
+            float lrh1 = saturate((lp1.y - cloudBottom) / layerThickness);
+            optDepthLight += sampleCloudDensity3D(lp1, lrh1, genus, rain, timeSec, biomeAtm) * 18.0;
+
+            // Step 2: 54m mid-body cloud volume shadow
+            vec3 lp2 = pos + mainLightDir * 54.0;
+            float lrh2 = saturate((lp2.y - cloudBottom) / layerThickness);
+            optDepthLight += sampleCloudDensity3D(lp2, lrh2, genus, rain, timeSec, biomeAtm) * 36.0;
+
+            // Step 3: 140m deep core & anvil shadow
+            vec3 lp3 = pos + mainLightDir * 140.0;
+            float lrh3 = saturate((lp3.y - cloudBottom) / layerThickness);
+            optDepthLight += sampleCloudDensity3D(lp3, lrh3, genus, rain, timeSec, biomeAtm) * 86.0;
+
+            // Multi-scale Beer-Lambert attenuation along light ray
+            float lightTransmittance = exp(-optDepthLight * 0.045);
             // Powder-sugar effect: clouds brighten along illuminated rims
-            float powder = 1.0 - exp(-density * 4.5);
-            float shadow = mix(lightTransmittance * powder, 1.0, 0.18);
+            float powder = 1.0 - exp(-density * 4.8);
+            float shadow = mix(lightTransmittance * powder, 1.0, 0.12);
             #else
             float shadow = 0.85;
             #endif

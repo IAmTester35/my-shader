@@ -38,6 +38,12 @@ vec2 hash22(vec2 p) {
     return fract((p3.xx + p3.yz) * p3.zy);
 }
 
+float hash31(vec3 p) {
+    vec3 p3 = fract(p * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
 vec3 hash33(vec3 p) {
     p = fract(p * vec3(0.1031, 0.1030, 0.0973));
     p += dot(p, p.yxz + 33.33);
@@ -165,16 +171,18 @@ float voronoi2D(vec2 p) {
     return minDist;
 }
 
-// Fast 3D Worley / Cellular Noise (2x2x2 cube with jitter constraint for GPU raymarching)
+// Fast 3D Worley / Cellular Noise (Adaptive 2x2x2 neighborhood centered on sample point)
+// Eliminates cell boundary discontinuities without performance penalty
 float worley3D_Fast(vec3 p) {
     vec3 id = floor(p);
     vec3 fd = fract(p);
+    vec3 base = step(0.5, fd) - vec3(1.0); // -1 or 0 depending on closest octant
     float minDist = 2.0;
     for (int z = 0; z <= 1; ++z) {
         for (int y = 0; y <= 1; ++y) {
             for (int x = 0; x <= 1; ++x) {
-                vec3 g = vec3(float(x), float(y), float(z));
-                vec3 o = hash33(id + g) * 0.75 + 0.125;
+                vec3 g = base + vec3(float(x), float(y), float(z));
+                vec3 o = hash33(id + g);
                 vec3 diff = g + o - fd;
                 minDist = min(minDist, dot(diff, diff));
             }
@@ -267,13 +275,31 @@ float cirrocumulusRipples2D(vec2 p, float rayDirY) {
     return clamp(density * sheetMask * 1.6, 0.0, 1.0);
 }
 
-// WMO Genera Pattern: Cirrus (Ci - Mây ti đuôi ngựa kéo dạt theo gió tầng cao)
+// WMO Genera Pattern: Cirrus (Ci - Mây ti sợi lông vũ hữu cơ vắt ngang vòm trời)
+// Khắc phục triệt để lỗi sọc xước / răng cưa bằng nhiễu ridged fractal uốn xoáy phi tuyến
 float cirrusFilament2D(vec2 p, vec2 windDir) {
     vec2 perp = vec2(-windDir.y, windDir.x);
-    vec2 shearedP = vec2(dot(p, windDir) * 0.22, dot(p, perp) * 1.85);
-    float f1 = fbm2D(shearedP * 3.0);
-    float f2 = gradientNoise2D(shearedP * 12.0 + vec2(f1 * 2.0, 0.0));
-    return saturate(f1 * 0.70 + f2 * 0.35);
+    // Uốn cong sợi mây theo trường xoáy gió quyển tầng cao (Curl-domain warp)
+    vec2 warp = vec2(
+        fbm2D(p * 1.8 + vec2(3.1, 7.4)),
+        fbm2D(p * 1.8 + vec2(5.8, 2.3))
+    ) * 0.35;
+    vec2 wp = p + warp;
+
+    float wLong = dot(wp, windDir);
+    float wCross = dot(wp, perp);
+    vec2 streamUV = vec2(wLong * 0.65, wCross * 1.8);
+
+    // Dải sợi băng mảnh mai (Ridged ice fallstreaks / virga)
+    float fiber1 = 1.0 - abs(fbm2D(streamUV * 2.2) * 2.0 - 1.0);
+    float fiber2 = 1.0 - abs(fbm2D(streamUV * 4.5 + vec2(fiber1 * 0.5, 0.0)) * 2.0 - 1.0);
+
+    // Mảng mây ti hữu cơ phân bố tự nhiên trên vòm trời (không phủ kín toàn bộ)
+    float mask = saturate((fbm2D(p * 0.85 + vec2(1.2, 4.7)) - 0.28) / 0.42);
+    mask = mask * mask * (3.0 - 2.0 * mask);
+
+    float cirrus = saturate(fiber1 * 0.65 + fiber2 * 0.45) * mask;
+    return cirrus;
 }
 
 // WMO Genera Pattern: Altocumulus (Ac - Mây trung tích đàn cừu trôi tầng trung)

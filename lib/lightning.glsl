@@ -279,15 +279,15 @@ vec3 evaluateProceduralLightningBolt(vec3 rayDir, LightningStrike s) {
     if (s.strikeType == LIGHTNING_TYPE_CG) {
         // Fast bounding box check with smooth outer border fade
         float fadeX = 1.0 - smoothstep(0.48, 0.72, abs(p.x));
-        float fadeY = (1.0 - smoothstep(0.44, 0.56, p.y)) * smoothstep(-0.48, -0.36, p.y);
+        float fadeY = (1.0 - smoothstep(0.44, 0.56, p.y)) * smoothstep(-0.65, -0.52, p.y);
         float fieldFade = fadeX * fadeY;
         if (fieldFade <= 0.001) return vec3(0.0);
 
         float rng = s.seed;
         float startX = (lcgRandom(rng) - 0.5) * 0.08;
-        float startY = 0.46;
+        float startY = 0.48;
         float targetX = startX + (lcgRandom(rng) - 0.5) * 0.16;
-        float targetY = -0.42;
+        float targetY = -0.50;
 
         float curX = startX;
         float curY = startY;

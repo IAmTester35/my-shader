@@ -9,6 +9,7 @@ uniform vec3 fogColor;
 uniform float rainStrength;
 uniform float frameTimeCounter;
 uniform int worldTime;
+uniform int moonPhase;
 uniform int biome_category;
 uniform int biome;
 
@@ -35,7 +36,7 @@ void main() {
     vec3 skyColor = calculateAtmosphericSky(rayDir, sunDir, moonDir, WORLD_UP, rainStrength, strike, biomeAtm);
 
     // 2. Stars, Milky Way Galaxy band, Meteors, and Multi-Layer Aurora Borealis (NASA SVS 4851)
-    vec3 stars = renderStarsAndMilkyWay(rayDir, sunHeight, rainStrength, frameTimeCounter, worldTime, biomeAtm);
+    vec3 stars = renderStarsAndMilkyWay(rayDir, moonDir, moonPhase, sunHeight, rainStrength, frameTimeCounter, worldTime, biomeAtm);
     skyColor += stars;
 
     gl_FragColor = vec4(skyColor, 1.0);

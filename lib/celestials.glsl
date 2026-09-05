@@ -38,31 +38,34 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec3 sunEmission = vec3(0.0);
     float alpha = 0.0;
 
-    // 1. Đĩa Mặt trời sắc nét với quy luật tối vùng rìa Eddington 3 thành phần
+    // 1. Đĩa Mặt trời sắc nét với nén dải động HDR quang cầu (chống cháy trắng hoàn toàn viền Eddington)
     if (flatDist < discRadius) {
         float r = flatDist / discRadius;
         #ifdef SUN_LIMB_DARKENING
         float mu = sqrt(max(1.0 - r * r, 0.0));
-        float limbDarkening = 0.35 + 0.65 * pow(mu, 0.60);
-        vec3 limbTint = mix(vec3(1.0, 0.65, 0.35), vec3(1.0), pow(mu, 0.35));
+        float limbDarkening = 0.40 + 0.60 * pow(mu, 0.55);
+        vec3 limbTint = mix(vec3(1.08, 0.58, 0.22), vec3(1.0), pow(mu, 0.30));
         #else
         float limbDarkening = 1.0;
         vec3 limbTint = vec3(1.0);
         #endif
-        float edgeAA = 1.0 - smoothstep(0.94, 1.0, r);
-        sunEmission += currentSunColor * limbDarkening * limbTint * edgeAA;
+        float edgeAA = 1.0 - smoothstep(0.93, 1.0, r);
+        // Photospheric core: center reaches pure white, limb softly rolls off to golden-amber
+        vec3 discColor = currentSunColor * limbDarkening * limbTint;
+        float coreIncandescence = pow(max(1.0 - r, 0.0), 1.6) * 2.8;
+        sunEmission += (discColor + vec3(coreIncandescence)) * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
-    // 2. Quầng plasma corona bám sát rìa quang cầu (tight physical plasma envelope)
-    // Suy giảm mượt mà theo hàm mũ bắt đầu ngay từ mép đĩa ra ngoài, triệt tiêu trước biên quad
+    // 2. Quầng nhật hoa đa tầng (K-Corona plasma bám sát + F-Corona bụi khuếch tán rộng)
     if (SUN_CORONA_INTENSITY > 0.001) {
         float rRel = max(flatDist - discRadius, 0.0) / discRadius;
-        float coronaGlow = exp(-rRel * 6.8) * 0.36 * SUN_CORONA_INTENSITY;
+        float kCorona = exp(-rRel * 7.5) * 0.72; // Inner dense plasma envelope
+        float fCorona = exp(-rRel * 2.4) * 0.28; // Outer soft dust halo
+        float coronaGlow = (kCorona + fCorona) * 0.85 * SUN_CORONA_INTENSITY;
 
         #ifdef SUN_CHROMATIC_CORONA
-        // Tán sắc plasma quang sai nhẹ nhàng chuyển từ cam vàng sang ánh mặt trời
-        vec3 coronaColor = mix(vec3(1.0, 0.52, 0.15), currentSunColor, exp(-rRel * 3.5));
+        vec3 coronaColor = mix(vec3(1.0, 0.52, 0.16), currentSunColor, exp(-rRel * 3.0));
         #else
         vec3 coronaColor = currentSunColor;
         #endif
@@ -70,14 +73,14 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
         alpha = max(alpha, clamp(coronaGlow * 1.5, 0.0, 1.0));
     }
 
-    // 3. Hào quang tán xạ dịu êm (không dùng hàm bậc 2 gây viền tròn cắt cụt quad)
+    // 3. Hào quang tán xạ dịu êm
     #ifdef SUN_GLARE
-    float glare = exp(-flatDist * 3.6) * 0.10 * biomeAtm.hazeDensity;
+    float glare = exp(-flatDist * 3.2) * 0.16 * biomeAtm.hazeDensity;
     sunEmission += currentSunColor * glare;
     alpha = max(alpha, clamp(glare * 1.5, 0.0, 1.0));
     #endif
 
-    // 4. Tia lóe nhiễu xạ 6 cánh (diffraction spikes anamorphic)
+    // 4. Tia lóe nhiễu xạ 6 cánh tán sắc quang phổ cầu vồng (Chromatic Spectral Dispersion)
     #ifdef SOLAR_DIFFRACTION_SPIKES
     float spAngle1 = 0.0;
     float spAngle2 = 1.047197; // 60 deg
@@ -87,14 +90,27 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec2 p2 = vec2(localCoord.x * cos(spAngle2) - localCoord.y * sin(spAngle2), localCoord.x * sin(spAngle2) + localCoord.y * cos(spAngle2));
     vec2 p3 = vec2(localCoord.x * cos(spAngle3) - localCoord.y * sin(spAngle3), localCoord.x * sin(spAngle3) + localCoord.y * cos(spAngle3));
 
-    float s1 = exp(-abs(p1.y) * 16.0) / (abs(p1.x) * 2.5 + 1.0);
-    float s2 = exp(-abs(p2.y) * 16.0) / (abs(p2.x) * 2.5 + 1.0);
-    float s3 = exp(-abs(p3.y) * 16.0) / (abs(p3.x) * 2.5 + 1.0);
+    // Wavelength-dependent diffraction widths: Red spreads wider, Blue is narrower
+    vec3 s1 = vec3(
+        exp(-abs(p1.y) * 11.5) / (abs(p1.x) * 2.0 + 1.0),
+        exp(-abs(p1.y) * 15.0) / (abs(p1.x) * 2.4 + 1.0),
+        exp(-abs(p1.y) * 19.5) / (abs(p1.x) * 2.8 + 1.0)
+    );
+    vec3 s2 = vec3(
+        exp(-abs(p2.y) * 11.5) / (abs(p2.x) * 2.0 + 1.0),
+        exp(-abs(p2.y) * 15.0) / (abs(p2.x) * 2.4 + 1.0),
+        exp(-abs(p2.y) * 19.5) / (abs(p2.x) * 2.8 + 1.0)
+    );
+    vec3 s3 = vec3(
+        exp(-abs(p3.y) * 11.5) / (abs(p3.x) * 2.0 + 1.0),
+        exp(-abs(p3.y) * 15.0) / (abs(p3.x) * 2.4 + 1.0),
+        exp(-abs(p3.y) * 19.5) / (abs(p3.x) * 2.8 + 1.0)
+    );
 
-    float spike = (s1 + s2 + s3) * exp(-flatDist * 3.2) * 0.20;
-    vec3 spikeColor = mix(vec3(1.0, 0.85, 0.65), currentSunColor, 0.5);
+    vec3 spike = (s1 + s2 + s3) * exp(-flatDist * 2.4) * 0.65;
+    vec3 spikeColor = mix(vec3(1.1, 0.92, 0.75), currentSunColor, 0.5);
     sunEmission += spikeColor * spike;
-    alpha = max(alpha, clamp(spike * 1.5, 0.0, 1.0));
+    alpha = max(alpha, clamp(max(max(spike.r, spike.g), spike.b) * 1.5, 0.0, 1.0));
     #endif
 
     // Suy giảm mượt ở biên ngoài quad, hoàn toàn không để lại vết cắt hay ranh giới tròn
@@ -106,13 +122,13 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     return vec4(sunEmission * weatherFade, alpha * weatherFade);
 }
 
-// Procedural high-detail Moon with maria, craters, 8-phases, 3D crater relief and halo for billboard rendering
+// Procedural high-detail Moon with spherical mapping, maria, craters, exact 8-phases terminator, Lommel-Seeliger scattering, Earthshine and halo
 vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 moonDir, vec3 upVector, int moonPhase, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
     if (rainStrength > 0.92 || sunHeight > 0.18) return vec4(0.0);
 
     float nightFactor = clamp(-sunHeight * 8.0, 0.0, 1.0);
     float discRadius = 0.48 * MOON_SIZE;
-    // Tông màu bạc ánh trăng tự nhiên dịu mát, không bị gắt xanh
+    // Tông màu bạc ánh trăng tự nhiên dịu mát
     vec3 moonBaseColor = vec3(0.92, 0.94, 0.97);
     vec3 moonEmission = vec3(0.0);
     float alpha = 0.0;
@@ -124,16 +140,31 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
         float normalZ = sqrt(max(1.0 - r * r, 0.0));
         vec3 sphereNormal = vec3(localCoord / discRadius, normalZ);
 
+        // Spherical UV projection (preserves real spherical geometry & foreshortens naturally toward limb)
+        float moonLon = atan(sphereNormal.x, sphereNormal.z);
+        float moonLat = asin(clamp(sphereNormal.y, -1.0, 1.0));
+        vec2 surfaceUV = vec2(moonLon * (1.0 / PI) + 0.5, moonLat * (2.0 / PI) + 0.5);
+
         // Chi tiết bề mặt biển bazan (maria) và các tia bắn miệng hố
         #ifdef MOON_SURFACE_DETAIL
-        vec2 surfaceUV = (localCoord / discRadius) * 1.5 + vec2(1.2, 0.8);
-        float maria = fbm2D_Detailed(surfaceUV * 2.4);
-        float craterRays = voronoi2D(surfaceUV * 4.2);
-        float microCraters = voronoi2D(surfaceUV * 9.5);
-        // Cân đối tương phản bề mặt để hiển thị rõ chi tiết mà không bị cháy sáng
-        float albedo = mix(0.55, 1.05, smoothstep(0.35, 0.68, maria));
-        albedo += (1.0 - smoothstep(0.0, 0.15, craterRays)) * 0.22;
-        albedo += (1.0 - smoothstep(0.0, 0.10, microCraters)) * 0.12;
+        // Realistic Lunar geography:
+        // Oceanus Procellarum & Mare Imbrium (northwest basalt plains)
+        float mareBase = fbm2D_Detailed(surfaceUV * 2.8);
+        float mareMask = smoothstep(0.40, 0.65, mareBase);
+        
+        // Tycho crater & ray system (southern highlands impact radiating rays)
+        vec2 tychoPos = vec2(0.48, 0.28);
+        float distTycho = length(surfaceUV - tychoPos);
+        float tychoAngle = atan(surfaceUV.y - tychoPos.y, surfaceUV.x - tychoPos.x);
+        float tychoRays = pow(abs(sin(tychoAngle * 8.0)), 6.0) * exp(-distTycho * 3.5);
+
+        // Impact cratering with natural scale distribution
+        float craters = 1.0 - voronoi2D(surfaceUV * 5.5);
+        float microCraters = 1.0 - voronoi2D(surfaceUV * 12.0);
+
+        float albedo = mix(0.52, 1.08, mareMask);
+        albedo += tychoRays * 0.28;
+        albedo += craters * 0.14 + microCraters * 0.08;
         #else
         float albedo = 1.0;
         #endif
@@ -153,56 +184,61 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
         vec3 phaseLightDir = normalize(vec3(sunTangentDir * lightTransverse, lightZ));
 
         #ifdef MOON_CRATER_RELIEF
-        // Đạo hàm vi phân gradient FBM liên tục C2 để tránh gãy khúc / răng cưa so với voronoi
-        vec2 eps = vec2(0.04, 0.0);
-        float hL = fbm2D(surfaceUV * 5.0 - eps.xy);
-        float hR = fbm2D(surfaceUV * 5.0 + eps.xy);
-        float hD = fbm2D(surfaceUV * 5.0 - eps.yx);
-        float hU = fbm2D(surfaceUV * 5.0 + eps.yx);
-        vec2 smoothGrad = vec2(hR - hL, hU - hD) * 1.8;
+        vec2 eps = vec2(0.03, 0.0);
+        float hL = fbm2D(surfaceUV * 6.0 - eps.xy);
+        float hR = fbm2D(surfaceUV * 6.0 + eps.xy);
+        float hD = fbm2D(surfaceUV * 6.0 - eps.yx);
+        float hU = fbm2D(surfaceUV * 6.0 + eps.yx);
+        vec2 smoothGrad = vec2(hR - hL, hU - hD) * 1.5;
 
-        // Chỉ tạo gồ ghề vi mô nhẹ dọc đường phân giới terminator
-        float termProximity = 1.0 - smoothstep(0.0, 0.35, abs(dot(sphereNormal, phaseLightDir)));
-        vec3 perturbedNormal = normalize(sphereNormal + vec3(smoothGrad * 0.18 * termProximity, 0.0));
+        float termProximity = 1.0 - smoothstep(0.0, 0.25, abs(dot(sphereNormal, phaseLightDir)));
+        vec3 perturbedNormal = normalize(sphereNormal + vec3(smoothGrad * 0.15 * termProximity, 0.0));
         #else
         vec3 perturbedNormal = sphereNormal;
         #endif
 
-        // Dải chuyển tiếp sáng tối mượt mà (smooth physical terminator falloff) loại bỏ răng cưa
         float NdotL = dot(perturbedNormal, phaseLightDir);
-        float illumination = smoothstep(-0.14, 0.14, NdotL);
+        // Lommel-Seeliger lunar regolith reflection
+        float mu0 = max(NdotL, 0.0);
+        float mu = max(perturbedNormal.z, 0.0);
+        float regolithScatter = mu0 / (mu0 + mu + 1e-3) * 1.75;
+        
+        // Exact sharp-yet-soft physical terminator (không bị méo trứng ở pha lưỡi liềm)
+        float terminator = smoothstep(-0.03, 0.04, NdotL);
+        float illumination = mix(0.0, regolithScatter, terminator);
 
         #ifdef MOON_EARTHSHINE
-        // Ánh đất dịu nhẹ phản chiếu phần tối của mặt trăng
-        illumination += 0.025 * (1.0 - illumination);
+        // Subtle planetary Earthshine (ánh đất xanh lam phản xạ từ đại dương Trái Đất)
+        float earthPhase = 1.0 - cos(phaseAngle) * 0.5;
+        vec3 earthshineColor = vec3(0.025, 0.038, 0.060) * earthPhase * (1.0 - terminator);
+        #else
+        vec3 earthshineColor = vec3(0.0);
         #endif
         #else
         float illumination = 1.0;
+        vec3 earthshineColor = vec3(0.0);
         #endif
 
-        // Cân chỉnh cường độ phát xạ theo MOON_BRIGHTNESS giữ trọn vẹn chi tiết bề mặt
-        moonEmission += moonBaseColor * albedo * illumination * (0.85 * MOON_BRIGHTNESS) * edgeAA;
+        moonEmission += (moonBaseColor * albedo * illumination * (0.85 * MOON_BRIGHTNESS) + earthshineColor) * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
     // Quầng sáng khí quyển & vòng tinh thể băng 22 độ (Lunar Halo)
     #ifdef MOON_HALO
-    // Hào quang khuếch tán mềm mại, dịu êm
-    float haloGlow = exp(-distToCenter * 2.8) * 0.035 * MOON_HALO_INTENSITY;
+    float haloGlow = exp(-distToCenter * 2.5) * 0.040 * MOON_HALO_INTENSITY;
     haloGlow *= mix(1.0, 1.4, biomeAtm.auroraStrength / 1.8);
 
-    // Vành hào quang 22 độ siêu mờ ảo, phân bố Gauss rộng không còn đường viền sắc
-    float ringR = abs(distToCenter - 0.72);
-    float ringIntensity = (biomeAtm.isCold ? 0.035 : 0.008) * MOON_HALO_INTENSITY;
-    float haloRing = exp(-ringR * ringR * 26.0) * ringIntensity;
+    float ringR = abs(distToCenter - 0.68);
+    float ringIntensity = (biomeAtm.isCold ? 0.040 : 0.012) * MOON_HALO_INTENSITY;
+    float haloRing = exp(-ringR * ringR * 32.0) * ringIntensity;
 
-    vec3 haloColor = vec3(0.65, 0.75, 0.92);
+    vec3 haloColor = vec3(0.68, 0.78, 0.95);
     moonEmission += haloColor * (haloGlow + haloRing);
-    alpha = max(alpha, clamp((haloGlow + haloRing) * 1.0, 0.0, 1.0));
+    alpha = max(alpha, clamp((haloGlow + haloRing) * 1.2, 0.0, 1.0));
     #endif
 
-    // Suy giảm mượt ở biên ngoài billboard quad
-    float quadFade = 1.0 - smoothstep(0.70, 1.0, distToCenter);
+    // Suy giảm mượt ở biên ngoài billboard quad (mở rộng vùng suy giảm để quầng băng không bị cắt góc)
+    float quadFade = 1.0 - smoothstep(0.82, 1.0, distToCenter);
     moonEmission *= quadFade;
     alpha *= quadFade;
 
@@ -210,35 +246,49 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
     return vec4(moonEmission * weatherFade, alpha * weatherFade);
 }
 
-// Shooting star / meteor streaks
+// Shooting star / meteor streaks with 3D capsule line segment distance and ionization trail
 vec3 renderMeteors(vec3 rayDir, float timeSec) {
     #ifndef METEOR_SHOWERS
     return vec3(0.0);
     #endif
 
-    // Meteor frequency cycle (every ~4 seconds)
-    float cycle = floor(timeSec * 0.25);
-    float localT = fract(timeSec * 0.25);
+    float cycle = floor(timeSec * 0.35);
+    float localT = fract(timeSec * 0.35);
 
     float meteorSeed = hash11(cycle * 78.43);
-    // 40% chance of meteor in a cycle
-    if (meteorSeed > 0.60) {
-        // Random start position and direction across upper sky
-        vec3 startPos = normalize(vec3(hash11(cycle * 12.1) * 2.0 - 1.0, 0.5 + hash11(cycle * 34.2) * 0.4, hash11(cycle * 56.3) * 2.0 - 1.0));
-        vec3 streakDir = normalize(vec3(0.8, -0.6, 0.5));
-
-        // Fast streak animation (lasts ~0.3 seconds)
-        float tSpeed = localT * 4.0;
-        if (tSpeed > 0.0 && tSpeed < 1.2) {
-            vec3 curHead = normalize(startPos + streakDir * tSpeed * 0.35);
-            float distToHead = length(rayDir - curHead);
+    if (meteorSeed > 0.45) {
+        // Trajectory start and end points in upper celestial hemisphere
+        vec3 startPos = normalize(vec3(
+            hash11(cycle * 12.1 + 1.0) * 1.8 - 0.9,
+            0.45 + hash11(cycle * 34.2 + 2.0) * 0.45,
+            hash11(cycle * 56.3 + 3.0) * 1.8 - 0.9
+        ));
+        vec3 meteorVel = normalize(vec3(
+            hash11(cycle * 71.5 + 4.0) * 1.4 - 0.7,
+            -0.35 - hash11(cycle * 83.2 + 5.0) * 0.3,
+            hash11(cycle * 92.8 + 6.0) * 1.4 - 0.7
+        ));
+        
+        // Fast streak duration ~ 0.45s
+        float progress = localT * 2.8;
+        if (progress > 0.0 && progress < 1.0) {
+            float streakLen = 0.25;
+            vec3 headPos = normalize(startPos + meteorVel * progress * 0.70);
+            vec3 tailPos = normalize(startPos + meteorVel * max(progress * 0.70 - streakLen, 0.0));
             
-            // Bright ionization trail
-            if (distToHead < 0.08) {
-                float headGlow = exp(-distToHead * 450.0);
-                float trail = exp(-distToHead * 80.0) * (1.0 - tSpeed / 1.2);
-                vec3 meteorColor = vec3(0.9, 0.96, 1.0) * 4.0;
-                return meteorColor * (headGlow + trail * 0.5);
+            // Distance from ray to 3D line segment (headPos to tailPos)
+            vec3 ab = headPos - tailPos;
+            vec3 ap = rayDir - tailPos;
+            float h = clamp(dot(ap, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
+            float distToStreak = length(ap - ab * h);
+            
+            if (distToStreak < 0.025) {
+                float intensity = exp(-distToStreak * 650.0);
+                float tailFade = pow(h, 2.5); // brightest at head, fades toward tail
+                
+                // Mineral emission color: magnesium (teal/green) or sodium (golden white)
+                vec3 meteorColor = mix(vec3(0.65, 0.95, 1.0), vec3(1.0, 0.92, 0.75), hash11(cycle * 3.1));
+                return meteorColor * intensity * tailFade * 8.5;
             }
         }
     }
@@ -369,79 +419,110 @@ vec3 renderBrightStar(vec3 celDir, vec3 starPos, float bv, float brightness, flo
     return starColor * (core + halo) * brightness * twinkle;
 }
 
-// Procedural dense star background in celestial coordinate space
-// Modulated by local galaxy luminance (Photon technique: stars cluster along the galactic plane)
-// Uses jittered Voronoi cellular distribution with dec-aware longitude scaling to prevent grid alignment & concentric ring artifacts
-vec3 renderProceduralStars(vec3 celDir, float starU, float timeSec, float galaxyLuminance) {
+// Procedural dense star background using 6-face Cubemap Lattice
+// Eliminates polar singularities, latitude pinching, and 3D voxel clipping
+vec3 renderProceduralStars(vec3 celDir, float timeSec, float galaxyLuminance) {
     vec3 starsColor = vec3(0.0);
 
-    // Declination and Right Ascension projection
-    float dec = asin(clamp(celDir.y, -1.0, 1.0)); // [-pi/2, pi/2]
-    float cosDec = max(cos(dec), 0.08);
-
-    // Layer 1: Base high-density background stars
+    // Layer 1: High-density faint background stars
     {
-        float scale = 360.0 * STARS_DENSITY;
-        vec2 starUV = vec2(starU * scale * cosDec, (dec * INV_PI + 0.5) * scale);
-        vec2 cell = floor(starUV);
-        vec2 frac = fract(starUV) - 0.5;
+        vec3 a = abs(celDir);
+        vec2 uv;
+        float faceId = 0.0;
+        if (a.x >= a.y && a.x >= a.z) {
+            uv = celDir.yz / a.x;
+            faceId = (celDir.x > 0.0) ? 1.0 : 2.0;
+        } else if (a.y >= a.x && a.y >= a.z) {
+            uv = celDir.xz / a.y;
+            faceId = (celDir.y > 0.0) ? 3.0 : 4.0;
+        } else {
+            uv = celDir.xy / a.z;
+            faceId = (celDir.z > 0.0) ? 5.0 : 6.0;
+        }
 
-        // Jitter offset within cell to completely eliminate grid alignment & circular patterns
-        vec2 jitter = hash22(cell) - 0.5;
-        vec2 delta = frac - jitter * 0.76;
+        float scale = 160.0 * STARS_DENSITY;
+        vec2 gridPos = uv * scale;
+        vec2 cell = floor(gridPos);
+        vec2 frac = fract(gridPos) - 0.5;
 
-        float starRandom = hash21(cell + vec2(1.7, 9.2));
-        float densityThreshold = clamp(0.81 - galaxyLuminance * 0.40, 0.55, 0.82);
+        vec2 cellKey = cell + vec2(faceId * 71.3, faceId * 37.9);
+        vec2 jitter = hash22(cellKey) - 0.5;
+        vec2 delta = frac - jitter * 0.72;
+
+        float starRandom = hash21(cellKey + vec2(1.7, 9.2));
+        float densityThreshold = clamp(0.78 - galaxyLuminance * 0.35, 0.52, 0.82);
 
         if (starRandom > densityThreshold) {
             float starDist = length(delta);
-            float starSize = 0.08 + (starRandom - densityThreshold) * 1.4;
+            float starSize = 0.07 + (starRandom - densityThreshold) * 1.2;
 
-            float twinkleSpeed = 2.0 + hash21(cell + 5.0) * 6.5;
+            float twinkleSpeed = 2.0 + hash21(cellKey + 5.0) * 6.5;
             vec3 twinkle = calculateStarTwinkle(timeSec, twinkleSpeed, starRandom * 62.8, 0.35);
 
-            float bv = hash21(cell + 12.0) * 2.1 - 0.3;
+            float bv = hash21(cellKey + 12.0) * 2.1 - 0.3;
             vec3 starTint = getStarColorFromBV(bv);
 
-            float brightness = exp(-starDist * starDist / (starSize * starSize * 0.08));
-            starsColor += starTint * brightness * twinkle * 1.8;
+            float core = exp(-starDist * starDist / (starSize * starSize * 0.06));
+            float halo = exp(-starDist / (starSize * 0.65)) * 0.15;
+            starsColor += starTint * (core + halo) * twinkle * 1.6;
         }
     }
 
-    // Layer 2: Secondary decorrelated layer (rotated grid) to break any subtle single-lattice resonance
+    // Layer 2: Medium-density brighter foreground stars (rotated coordinate frame)
     {
-        mat2 rotLayer = mat2(0.7071, -0.7071, 0.7071, 0.7071);
-        float scale2 = 250.0 * STARS_DENSITY;
-        vec2 starUV2 = rotLayer * vec2(starU * scale2 * cosDec, (dec * INV_PI + 0.5) * scale2);
-        vec2 cell2 = floor(starUV2);
-        vec2 frac2 = fract(starUV2) - 0.5;
+        mat3 rot = mat3(
+            0.80,  0.36, -0.48,
+           -0.36,  0.93,  0.10,
+            0.48,  0.10,  0.87
+        );
+        vec3 rotDir = rot * celDir;
+        vec3 a = abs(rotDir);
+        vec2 uv2;
+        float faceId2 = 0.0;
+        if (a.x >= a.y && a.x >= a.z) {
+            uv2 = rotDir.yz / a.x;
+            faceId2 = (rotDir.x > 0.0) ? 1.0 : 2.0;
+        } else if (a.y >= a.x && a.y >= a.z) {
+            uv2 = rotDir.xz / a.y;
+            faceId2 = (rotDir.y > 0.0) ? 3.0 : 4.0;
+        } else {
+            uv2 = rotDir.xy / a.z;
+            faceId2 = (rotDir.z > 0.0) ? 5.0 : 6.0;
+        }
 
-        vec2 jitter2 = hash22(cell2 + vec2(43.1, 17.5)) - 0.5;
-        vec2 delta2 = frac2 - jitter2 * 0.76;
+        float scale2 = 105.0 * STARS_DENSITY;
+        vec2 gridPos2 = uv2 * scale2;
+        vec2 cell2 = floor(gridPos2);
+        vec2 frac2 = fract(gridPos2) - 0.5;
 
-        float starRandom2 = hash21(cell2 + vec2(8.3, 31.7));
-        float densityThreshold2 = clamp(0.86 - galaxyLuminance * 0.35, 0.65, 0.88);
+        vec2 cellKey2 = cell2 + vec2(faceId2 * 53.7 + 100.0, faceId2 * 29.1 + 50.0);
+        vec2 jitter2 = hash22(cellKey2) - 0.5;
+        vec2 delta2 = frac2 - jitter2 * 0.72;
+
+        float starRandom2 = hash21(cellKey2 + vec2(3.1, 7.8));
+        float densityThreshold2 = clamp(0.85 - galaxyLuminance * 0.25, 0.65, 0.88);
 
         if (starRandom2 > densityThreshold2) {
             float starDist2 = length(delta2);
-            float starSize2 = 0.07 + (starRandom2 - densityThreshold2) * 1.3;
+            float starSize2 = 0.09 + (starRandom2 - densityThreshold2) * 1.5;
 
-            float twinkleSpeed2 = 1.8 + hash21(cell2 + 9.0) * 5.5;
+            float twinkleSpeed2 = 1.8 + hash21(cellKey2 + 9.0) * 5.5;
             vec3 twinkle2 = calculateStarTwinkle(timeSec, twinkleSpeed2, starRandom2 * 51.4, 0.30);
 
-            float bv2 = hash21(cell2 + 7.0) * 2.0 - 0.25;
+            float bv2 = hash21(cellKey2 + 7.0) * 2.0 - 0.25;
             vec3 starTint2 = getStarColorFromBV(bv2);
 
-            float brightness2 = exp(-starDist2 * starDist2 / (starSize2 * starSize2 * 0.08));
-            starsColor += starTint2 * brightness2 * twinkle2 * 1.5;
+            float core2 = exp(-starDist2 * starDist2 / (starSize2 * starSize2 * 0.07));
+            float halo2 = exp(-starDist2 / (starSize2 * 0.70)) * 0.20;
+            starsColor += starTint2 * (core2 + halo2) * twinkle2 * 2.2;
         }
     }
 
     return starsColor;
 }
 
-// Primary Night Sky Compositor: NASA SVS 4851 Milky Way, Stars, Meteors & Auroras
-vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float timeSec, int worldTimeTicks, BiomeAtmosphere biomeAtm) {
+// Primary Night Sky Compositor: NASA SVS 4851 Milky Way, Stars, Meteors & Auroras (8-param with Lunar Washout)
+vec3 renderStarsAndMilkyWay(vec3 rayDir, vec3 moonDir, int moonPhase, float sunHeight, float rain, float timeSec, int worldTimeTicks, BiomeAtmosphere biomeAtm) {
     #ifndef ENABLE_STARS
     return vec3(0.0);
     #endif
@@ -458,6 +539,13 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     float visibility     = nightStrength * horizonMask * (1.0 - rain * 2.0);
     if (visibility <= 0.0) return vec3(0.0);
 
+    // Lunar sky wash-out (Bortle scale simulation)
+    // When the moon is high and bright, nocturnal Rayleigh/Mie airglow washes out faint cosmos
+    float moonElev = dot(moonDir, WORLD_UP);
+    float lunarIllum = (moonPhase == 0) ? 1.0 : ((moonPhase == 1 || moonPhase == 7) ? 0.72 : ((moonPhase == 2 || moonPhase == 6) ? 0.45 : ((moonPhase == 3 || moonPhase == 5) ? 0.18 : 0.0)));
+    float moonWashout = clamp(moonElev * 1.5, 0.0, 1.0) * lunarIllum * 0.60;
+    float cosmosVisibility = visibility * (1.0 - moonWashout);
+
     vec3 sphereDir = normalize(rayDir);
     vec3 celDir = worldToCelestial(sphereDir, worldTimeTicks);
     vec2 nasaUV = celestialToNASA_UV(celDir);
@@ -465,7 +553,7 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     vec3 starsColor = vec3(0.0);
     float galaxyLuminance = 0.0;
 
-    // 1. Milky Way Galaxy Band (Photon-style Linear decoding & luminance-preserving saturation)
+    // 1. Milky Way Galaxy Band (Natural NASA SVS 4851 photometric color palette)
     #ifdef MILKY_WAY
     #ifdef NASA_SVS_MILKY_WAY
     vec4 mwSample = texture2D(milkyway, nasaUV);
@@ -473,25 +561,23 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     // Inverse sRGB EOTF: prevents black space from turning into a bright hazy fog
     vec3 mwLinear = srgbToLinear(mwSample.rgb);
     
-    // Celestial tint (Photon palette: subtle cosmic blue-violet galactic tint)
-    const vec3 galaxyTint = vec3(0.78, 0.72, 1.0);
+    // Warm golden galactic core (population II stars) with cool dark dust lanes
+    const vec3 galaxyTint = vec3(1.08, 0.98, 0.88);
     vec3 mwColor = mwLinear * galaxyTint * MILKY_WAY_BRIGHTNESS;
     
-    // Luminance-preserving saturation boost for vibrant dust lanes and nebulae
+    // Gentle saturation preservation without neon purple tint
     galaxyLuminance = dot(mwColor, vec3(0.2126, 0.7152, 0.0722));
-    mwColor = mix(vec3(galaxyLuminance), mwColor, 1.85);
+    mwColor = mix(vec3(galaxyLuminance), mwColor, 1.35);
 
     #ifdef MILKY_WAY_H_ALPHA
-    // Hydrogen-alpha (656.3 nm) deep red/magenta emission nebula enhancement
-    // Prominently enhances emission regions like Carina, Orion, Barnard's Loop, and Cygnus
-    float hAlphaMask = clamp(mwSample.r * 1.8 - (mwSample.g + mwSample.b) * 0.9, 0.0, 1.0);
-    vec3 hAlphaColor = vec3(1.0, 0.18, 0.38) * hAlphaMask * 0.45 * MILKY_WAY_BRIGHTNESS;
+    // Hydrogen-alpha (656.3 nm) deep crimson/magenta emission nebula enhancement
+    float hAlphaMask = clamp(mwSample.r * 1.6 - (mwSample.g * 0.8 + mwSample.b * 0.8), 0.0, 1.0);
+    vec3 hAlphaColor = vec3(0.95, 0.12, 0.28) * hAlphaMask * 0.28 * MILKY_WAY_BRIGHTNESS;
     mwColor += hAlphaColor;
     #endif
 
     mwColor = max(mwColor, vec3(0.0));
-    
-    starsColor += mwColor;
+    starsColor += mwColor * (cosmosVisibility / max(visibility, 1e-4));
     #else
     // Procedural fallback Milky Way
     mat3 galRot = mat3(
@@ -511,12 +597,12 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
         float dustAbsorption = smoothstep(0.35, 0.65, dustLaneNoise);
         float emission = nebulaeNoise * (1.0 - dustAbsorption * 0.75);
 
-        vec3 galacticCoreColor = vec3(0.22, 0.30, 0.60);
-        vec3 galacticDustColor = vec3(0.48, 0.26, 0.42);
+        vec3 galacticCoreColor = vec3(0.32, 0.30, 0.45);
+        vec3 galacticDustColor = vec3(0.38, 0.24, 0.32);
         vec3 mwColor = mix(galacticCoreColor, galacticDustColor, dustLaneNoise);
 
         galaxyLuminance = bandProfile * emission * 0.42 * MILKY_WAY_BRIGHTNESS;
-        starsColor += mwColor * galaxyLuminance;
+        starsColor += mwColor * galaxyLuminance * (cosmosVisibility / max(visibility, 1e-4));
     }
     #endif
     #endif
@@ -541,8 +627,8 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     }
     #endif
 
-    // 4. Procedural Dense Star Field with Ballesteros Blackbody Colors & Galactic Concentration
-    starsColor += renderProceduralStars(celDir, nasaUV.x, timeSec, galaxyLuminance);
+    // 4. Procedural Dense Star Field with Isotropic Cubemap Lattice (0 polar distortion, 0 voxel clipping)
+    starsColor += renderProceduralStars(celDir, timeSec, galaxyLuminance) * (cosmosVisibility / max(visibility, 1e-4));
 
     // 5. Prominent Real Stars (Hipparcos Catalog with Ballesteros B-V Photometry)
     // Sirius (Canis Major): RA 6.75h, Dec -16.7°, B-V 0.00
@@ -577,50 +663,73 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     // 6. Meteor Showers
     starsColor += renderMeteors(sphereDir, timeSec);
 
-    // 7. Multi-Layer Aurora Borealis (prominent in cold/mountain biomes)
+    // 7. Multi-Curtain Aurora Borealis with Curl Domain Warping (prominent in cold/mountain biomes)
     #ifdef AURORA_BOREALIS
     float auroraStrength = biomeAtm.auroraStrength * AURORA_INTENSITY;
-    if (auroraStrength > 0.01 && sphereDir.y > 0.03 && sphereDir.y < 0.65) {
-        // Continuous smooth northward factor - no abrupt cutoffs
-        float northFactor = 1.0 - smoothstep(-0.45, 0.15, sphereDir.z);
+    if (auroraStrength > 0.01 && sphereDir.y > 0.03 && sphereDir.y < 0.72) {
+        float northFactor = 1.0 - smoothstep(-0.55, 0.20, sphereDir.z);
         if (northFactor > 0.001) {
-            float heightFactor = smoothstep(0.03, 0.16, sphereDir.y) * (1.0 - smoothstep(0.32, 0.60, sphereDir.y));
+            float heightFactor = smoothstep(0.03, 0.16, sphereDir.y) * (1.0 - smoothstep(0.38, 0.68, sphereDir.y));
 
-            // Curving auroral oval projected onto celestial dome
             float azim = atan(sphereDir.x, max(-sphereDir.z, 0.02));
             float distFromPole = length(vec2(sphereDir.x, sphereDir.z + 0.35));
-            vec2 auroraUV = vec2(azim * 2.5, (distFromPole - 0.75) / (sphereDir.y + 0.12));
-            
-            float wave1 = sin(auroraUV.x * 2.8 + timeSec * 0.35);
-            float wave2 = cos(auroraUV.x * 5.6 - timeSec * 0.22) * 0.5;
-            float wave3 = sin(auroraUV.x * 9.2 + timeSec * 0.45) * 0.25;
-            float auroraFbm = fbm2D(auroraUV * 2.2 + vec2(timeSec * 0.06, 0.0));
 
-            float curtain = abs(auroraUV.y * 0.38 + wave1 * 0.15 + wave2 * 0.08 + wave3 * 0.04 + auroraFbm * 0.18);
-            curtain = exp(-curtain * 16.0);
+            // Domain warping for organic folded plasma ribbon curtains (curling folds)
+            vec2 curtainCoord = vec2(azim * 2.8, (distFromPole - 0.75) / (sphereDir.y + 0.12));
+            vec2 curlWarp = vec2(
+                fbm2D(curtainCoord * 1.6 + vec2(timeSec * 0.04, 0.0)),
+                fbm2D(curtainCoord * 1.6 + vec2(1.7, timeSec * 0.03))
+            ) * 0.28;
+            curtainCoord += curlWarp;
+
+            // Curtain 1: Primary active auroral arc
+            float waveA1 = sin(curtainCoord.x * 3.2 + timeSec * 0.32);
+            float waveA2 = cos(curtainCoord.x * 6.5 - timeSec * 0.20) * 0.5;
+            float cDist1 = abs(curtainCoord.y * 0.42 + waveA1 * 0.18 + waveA2 * 0.08);
+            float curtain1 = exp(-cDist1 * 14.0);
+
+            // Curtain 2: Secondary deeper background arc (parallax fold)
+            float waveB1 = sin(curtainCoord.x * 2.4 - timeSec * 0.25 + 1.8);
+            float waveB2 = cos(curtainCoord.x * 5.2 + timeSec * 0.18) * 0.4;
+            float cDist2 = abs((curtainCoord.y - 0.18) * 0.48 + waveB1 * 0.15 + waveB2 * 0.07);
+            float curtain2 = exp(-cDist2 * 16.0) * 0.65;
+
+            float totalCurtain = curtain1 + curtain2;
 
             #ifdef AURORA_RAY_STREAMERS
-            // High-frequency vertical magnetic field streamers
-            float rayPattern = sin(auroraUV.x * 32.0 + timeSec * 0.8) * 0.5 + 0.5;
-            rayPattern *= sin(auroraUV.x * 75.0 - timeSec * 1.4) * 0.5 + 0.5;
-            curtain *= mix(0.72, 1.45, rayPattern);
+            // Flowing vertical magnetic field streamers along geomagnetic field lines
+            float rayPattern1 = sin(curtainCoord.x * 28.0 + sphereDir.y * 12.0 + timeSec * 0.75) * 0.5 + 0.5;
+            float rayPattern2 = sin(curtainCoord.x * 62.0 - sphereDir.y * 22.0 - timeSec * 1.2) * 0.5 + 0.5;
+            float rayPattern = rayPattern1 * 0.6 + rayPattern2 * 0.4;
+            totalCurtain *= mix(0.70, 1.45, rayPattern);
             #endif
 
-            vec3 greenEmerald  = vec3(0.12, 0.92, 0.45);
-            vec3 violetMagenta = vec3(0.70, 0.18, 0.90);
-            vec3 crimsonTop    = vec3(0.88, 0.15, 0.25);
+            // Physically authentic atmospheric emission spectrum:
+            // 557.7 nm atomic oxygen green dominates lower 100-150km
+            // 630.0 nm atomic oxygen crimson at high altitude >200km
+            // N2+ first negative violet at lower border during active storms
+            vec3 emeraldGreen  = vec3(0.08, 0.95, 0.42);
+            vec3 celestialCyan = vec3(0.12, 0.85, 0.78);
+            vec3 violetBorder  = vec3(0.55, 0.15, 0.85);
+            vec3 crimsonCrown  = vec3(0.92, 0.10, 0.22);
 
-            float vGrad1 = smoothstep(0.06, 0.26, sphereDir.y);
-            float vGrad2 = smoothstep(0.24, 0.48, sphereDir.y);
-            vec3 auroraColor = mix(greenEmerald, violetMagenta, vGrad1);
-            auroraColor = mix(auroraColor, crimsonTop, vGrad2);
+            vec3 auroraColor = mix(emeraldGreen, celestialCyan, smoothstep(0.10, 0.28, sphereDir.y));
+            auroraColor = mix(auroraColor, crimsonCrown, smoothstep(0.30, 0.58, sphereDir.y));
+            // Subtle violet border at the very lower edge
+            float lowerEdge = smoothstep(0.04, 0.10, sphereDir.y) * (1.0 - smoothstep(0.10, 0.16, sphereDir.y));
+            auroraColor = mix(auroraColor, violetBorder, lowerEdge * 0.45);
 
-            starsColor += auroraColor * curtain * heightFactor * northFactor * 0.90 * auroraStrength;
+            starsColor += auroraColor * totalCurtain * heightFactor * northFactor * 1.15 * auroraStrength;
         }
     }
     #endif
 
     return starsColor * visibility;
+}
+
+// 6-parameter backwards compatibility wrapper
+vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float timeSec, int worldTimeTicks, BiomeAtmosphere biomeAtm) {
+    return renderStarsAndMilkyWay(rayDir, vec3(0.0, -1.0, 0.0), 4, sunHeight, rain, timeSec, worldTimeTicks, biomeAtm);
 }
 
 #endif // CELESTIALS_GLSL

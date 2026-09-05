@@ -47,11 +47,22 @@ float dualHgPhase(float cosTheta, float g1, float g2, float k) {
     return doubleHgPhase(cosTheta, g1, g2, k);
 }
 
+// Dual-lobe atmospheric aerosol Mie phase function (narrow forward aureole + wide diffuse halo)
 float atmosphericMiePhase(float cosTheta, float g) {
+    // Component 1: Forward diffraction peak (g1 = 0.982) for brilliant solar circumsolar aureole
+    float g1 = 0.982;
+    float g1_2 = g1 * g1;
+    float num1 = (1.0 - g1_2);
+    float denom1 = 4.0 * PI * pow(max(1.0 + g1_2 - 2.0 * g1 * cosTheta, 1e-4), 1.5);
+    float forwardPeak = num1 / denom1;
+
+    // Component 2: Standard Cornette-Shanks aerosol haze
     float g2 = g * g;
-    float num = 3.0 * (1.0 - g2) * (1.0 + cosTheta * cosTheta);
-    float denom = 8.0 * PI * (2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5);
-    return num / denom;
+    float num2 = 3.0 * (1.0 - g2) * (1.0 + cosTheta * cosTheta);
+    float denom2 = 8.0 * PI * (2.0 + g2) * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5);
+    float diffuseHaze = num2 / denom2;
+
+    return mix(diffuseHaze, forwardPeak, 0.12);
 }
 
 // Analytical Chapman air mass function for spherical atmosphere
@@ -278,23 +289,29 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
 
     #ifdef BELT_OF_VENUS
     // Belt of Venus: anti-solar twilight arch and Earth shadow projection
-    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > 0.005) {
-        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.5);
-        float archHeight = smoothstep(0.01, 0.08, rayDir.y) * (1.0 - smoothstep(0.12, 0.30, rayDir.y));
+    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > -0.02) {
+        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.2);
+        float archHeight = smoothstep(-0.02, 0.07, rayDir.y) * (1.0 - smoothstep(0.10, 0.28, rayDir.y));
         float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
-        vec3 pinkArch = vec3(0.88, 0.36, 0.50) * (archHeight * antiSolarFactor * twilightStrength * 0.40);
-        inScatter += pinkArch * exp(-optView.r * 0.4);
+        
+        // Earth shadow below the pink arch (dark blue-gray wedge)
+        float earthShadow = (1.0 - smoothstep(-0.02, 0.04, rayDir.y)) * antiSolarFactor * twilightStrength;
+        vec3 earthShadowCol = vec3(0.015, 0.022, 0.045) * earthShadow;
+        
+        // Pink/crimson arch of Belt of Venus
+        vec3 pinkArch = vec3(0.82, 0.38, 0.46) * (archHeight * antiSolarFactor * twilightStrength * 0.35);
+        inScatter = inScatter * (1.0 - earthShadow * 0.6) + pinkArch * exp(-optView.r * 0.4) + earthShadowCol;
     }
     #endif
 
     #ifdef SKY_GROUND_FOG
-    // Ground bounce if looking below horizon
-    if (tGround > 0.0) {
-        vec3 groundNormal = normalize(p + rayDir * tGround);
-        float NdotSun = max(dot(groundNormal, sunDir), 0.0);
-        vec3 groundColor = vec3(0.08, 0.12, 0.06) * biomeAtm.skyTint;
-        vec3 groundIllum = (sunL0 * sunTransObs * NdotSun + multiScatterAmbient) * groundColor;
-        inScatter += groundIllum * exp(-optView);
+    // Smooth planetary horizon haze & ground bounce (eliminates hard cut at horizon)
+    if (rayDir.y < 0.06) {
+        float horizonFade = smoothstep(0.06, -0.12, rayDir.y);
+        vec3 groundColor = vec3(0.06, 0.09, 0.05) * biomeAtm.skyTint;
+        vec3 groundIllum = (sunL0 * sunTransObs * max(sunElev, 0.0) * 0.2 + multiScatterAmbient) * groundColor;
+        vec3 horizonHaze = mix(inScatter, groundIllum, horizonFade * 0.85);
+        inScatter = mix(inScatter, horizonHaze, horizonFade);
     }
     #endif
 
@@ -311,8 +328,21 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
         #ifdef DESERT_SANDSTORM
         if (biomeAtm.isArid) {
             float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 sandstormColor = vec3(0.78, 0.52, 0.28) * mix(0.15, 1.0, dayFactor);
-            inScatter = mix(inScatter, sandstormColor, rain * 0.92);
+            vec3 sandBase = vec3(0.82, 0.54, 0.26) * mix(0.18, 1.0, dayFactor);
+            
+            // Turbulent dust sheets blown across horizon by strong desert winds
+            vec2 dustUV = vec2(rayDir.x * 2.5 + rain * 0.5, rayDir.z * 2.5) / max(abs(rayDir.y) + 0.08, 0.08);
+            float dustTurbulence = fbm2D(dustUV * 0.35) * 0.25;
+            
+            // Vertical density gradient: thickest near ground, thinning out toward zenith
+            float heightDensity = exp(-max(rayDir.y, 0.0) * 3.5);
+            float sandFactor = saturate(rain * (0.65 + heightDensity * 0.35 + dustTurbulence));
+            
+            // Forward Mie scattering makes sun area glow intense fiery orange
+            float dustMie = pow(max(cosThetaSun, 0.0), 3.0) * 0.45 * dayFactor;
+            vec3 dustColor = sandBase * (1.0 + dustMie * vec3(1.2, 0.8, 0.4));
+            
+            inScatter = mix(inScatter, dustColor, sandFactor);
         } else
         #endif
         {
@@ -446,11 +476,11 @@ vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector
 
     #ifdef BELT_OF_VENUS
     // Belt of Venus: anti-solar twilight arch and Earth shadow projection
-    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > 0.005) {
-        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.5);
-        float archHeight = smoothstep(0.01, 0.08, rayDir.y) * (1.0 - smoothstep(0.12, 0.30, rayDir.y));
+    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > -0.02) {
+        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.2);
+        float archHeight = smoothstep(-0.02, 0.07, rayDir.y) * (1.0 - smoothstep(0.10, 0.28, rayDir.y));
         float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
-        vec3 pinkArch = vec3(0.88, 0.36, 0.50) * (archHeight * antiSolarFactor * twilightStrength * 0.40);
+        vec3 pinkArch = vec3(0.82, 0.38, 0.46) * (archHeight * antiSolarFactor * twilightStrength * 0.35);
         inScatter += pinkArch * exp(-optView.r * 0.4);
     }
     #endif
@@ -463,8 +493,11 @@ vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector
         #ifdef DESERT_SANDSTORM
         if (biomeAtm.isArid) {
             float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 sandstormColor = vec3(0.78, 0.52, 0.28) * mix(0.15, 1.0, dayFactor);
-            inScatter = mix(inScatter, sandstormColor, rain * 0.92);
+            vec3 sandBase = vec3(0.82, 0.54, 0.26) * mix(0.18, 1.0, dayFactor);
+            float heightDensity = exp(-max(rayDir.y, 0.0) * 3.5);
+            float dustMie = pow(max(cosThetaSun, 0.0), 3.0) * 0.45 * dayFactor;
+            vec3 sandstormColor = sandBase * (1.0 + dustMie * vec3(1.2, 0.8, 0.4));
+            inScatter = mix(inScatter, sandstormColor, rain * (0.70 + heightDensity * 0.25));
         } else
         #endif
         {

@@ -44,16 +44,16 @@ vec3 applyPostProcessing(vec3 hdrColor, vec2 uv) {
     // 1. Exposure adjustment
     vec3 color = hdrColor * EXPOSURE;
 
-    // 2. Tonemapping
+    // 2. Linear HDR color grading & saturation (preserves highlight roll-off without gamut clipping)
+    color = adjustSaturation(color, SATURATION);
+
+    // 3. Tonemapping (ACES Filmic with natural desaturating highlight rolloff)
     #ifdef TONEMAP_ACES
     color = toneMapACES(color);
     #else
     // Reinhard fallback
     color = color / (color + vec3(1.0));
     #endif
-
-    // 3. Color grading & saturation
-    color = adjustSaturation(color, SATURATION);
 
     // 4. Subtle gamma correction (linear to sRGB)
     color = pow(max(color, vec3(0.0)), vec3(1.0 / 2.2));
