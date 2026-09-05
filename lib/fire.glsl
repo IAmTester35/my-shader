@@ -8,68 +8,100 @@
 /*
  * ==============================================================================
  *  THERMODYNAMIC FIRE & IONIZATION PLASMA SYSTEM (Cinematic Optics Edition)
- *  - Planckian Blackbody Radiation & Color Temperature Gradient (1000K - 2200K)
- *  - High-Energy Ionization Plasma for Soul Fire (Swan band CH/C2 Radicals)
- *  - Rayleigh-Bénard Buoyant Thermal Convection & Multi-Octave Flame Licks
- *  - Micro-Ember Detachment & Upward Drafting Particle Field
+ *  - ACES-Calibrated Filmic Blackbody Radiance (1000K - 2200K equivalent curve)
+ *  - Stylized Ionization Radical Plasma for Soul Fire (CH / C2 Swan Band Spectral Analogue)
+ *  - Multi-Octave Buoyant Thermal Convection & Flame Tongue Licking
+ *  - Micro-Ember Detachment & Upward Drafting Cellular Spark Field
  *  - Cinematic Peripheral Screen Fire Vignette (Clear center, licking edge flames)
  *  - Full HDR Optical Integration for ACES Filmic Tonemapping
  * ==============================================================================
  */
 
 // ------------------------------------------------------------------------------
-// 1. Blackbody Thermodynamics & Spectral Emission
+// 1. Spectral Emission & Color Palettes (SSOC)
 // ------------------------------------------------------------------------------
 
-// Analytical Planckian Blackbody emission gradient for normal hydrocarbon/wood fire
-// t: Normalized flame intensity [0.0 (outer soot) .. 1.0 (incandescent core)]
-vec3 getBlackbodyFlameColor(float t) {
-    float core = smoothstep(0.60, 0.95, t);
-    float body = smoothstep(0.20, 0.70, t);
-    float edge = smoothstep(0.02, 0.35, t);
+// Unified 3-tier spectral color ramp generator for combustion and ionized plasma.
+// Evaluates outer cooling fringe, intermediate reaction zone, and incandescent core.
+vec3 sampleFlameSpectralRamp(
+    float t,
+    vec3 colEdge,
+    vec3 colBody,
+    vec3 colCore,
+    vec2 edgeBand,
+    vec2 bodyBand,
+    vec2 coreBand,
+    float edgeDamping,
+    float coreHdrMultiplier
+) {
+    float edge = smoothstep(edgeBand.x, edgeBand.y, t);
+    float body = smoothstep(bodyBand.x, bodyBand.y, t);
+    float core = smoothstep(coreBand.x, coreBand.y, t);
 
-    // Outer cooling fringe (1000K - 1200K): Deep smoldering crimson/cherry-red
-    vec3 colEdge = vec3(0.85, 0.12, 0.02);
+    vec3 color = mix(colEdge * edgeDamping, colBody, body);
+    color = mix(color, colCore, core);
 
-    // Intermediate combustion zone (1400K - 1700K): Rich saturated amber-orange
-    vec3 colBody = vec3(1.20, 0.55, 0.08);
+    if (coreHdrMultiplier > 0.0) {
+        // Quadratic HDR radiance boost in peak reaction zone
+        color += colCore * (core * core * coreHdrMultiplier);
+    }
 
-    // Incandescent inner core (>2000K): Brilliant white-yellow with HDR punch
-    vec3 colCore = vec3(2.40, 2.10, 1.40);
-
-    vec3 flame = mix(colEdge * 0.7, colBody, body);
-    flame = mix(flame, colCore, core);
-
-    #ifdef FIRE_BLACKBODY_CORE
-    // Extra HDR radiance for the hottest reaction zone to bloom naturally through ACES
-    flame += colCore * (core * core * 1.8);
-    #endif
-
-    return flame * edge;
+    return color * edge;
 }
 
-// Analytical Ionization Spectral emission for Soul Fire (Swan Band Emission)
-// High-energy radical emissions (4500K - 8000K plasma luminescence)
+// Planckian Blackbody emission gradient for normal hydrocarbon/wood fire
+// Note: While natural open woodfires peak around 1000K - 1400K, this curve is
+// artistically extended to an incandescent 2200K equivalent core to force ACES
+// filmic tonemapping to roll over saturated yellows into natural desaturated white highlights.
+vec3 getBlackbodyFlameColor(float t) {
+    // Outer cooling soot fringe (1000K - 1200K): Deep smoldering crimson
+    const vec3 COL_EDGE = vec3(0.85, 0.12, 0.02);
+    // Intermediate combustion zone (1400K - 1700K): Saturated amber-orange
+    const vec3 COL_BODY = vec3(1.20, 0.55, 0.08);
+    // Incandescent inner reaction core (>2000K graded): Brilliant white-yellow HDR highlight
+    const vec3 COL_CORE = vec3(2.40, 2.10, 1.40);
+
+    #ifdef FIRE_BLACKBODY_CORE
+    float hdrMultiplier = 1.8;
+    #else
+    float hdrMultiplier = 0.0;
+    #endif
+
+    return sampleFlameSpectralRamp(
+        t,
+        COL_EDGE,
+        COL_BODY,
+        COL_CORE,
+        vec2(0.02, 0.35),
+        vec2(0.20, 0.70),
+        vec2(0.60, 0.95),
+        0.70,
+        hdrMultiplier
+    );
+}
+
+// Ionization spectral emission for Soul Fire
+// Stylized fantasy plasma palette inspired by high-excitation radical emission bands:
+// methylidyne CH (431 nm indigo) and diatomic carbon C2 Swan bands (470-516 nm cyan/turquoise).
 vec3 getSoulFirePlasmaColor(float t) {
-    float core = smoothstep(0.55, 0.92, t);
-    float body = smoothstep(0.18, 0.65, t);
-    float edge = smoothstep(0.02, 0.30, t);
-
     // Outer corona: Deep indigo/ultramarine boundary
-    vec3 colEdge = vec3(0.04, 0.22, 0.65);
-
+    const vec3 COL_EDGE = vec3(0.04, 0.22, 0.65);
     // Intermediate plasma: Vibrant spectral cyan/turquoise
-    vec3 colBody = vec3(0.10, 0.82, 1.15);
-
+    const vec3 COL_BODY = vec3(0.10, 0.82, 1.15);
     // Inner ionized core: Incandescent electric violet-white HDR
-    vec3 colCore = vec3(1.30, 2.10, 2.80);
+    const vec3 COL_CORE = vec3(1.30, 2.10, 2.80);
 
-    vec3 plasma = mix(colEdge * 0.8, colBody, body);
-    plasma = mix(plasma, colCore, core);
-
-    plasma += colCore * (core * core * 2.0);
-
-    return plasma * edge;
+    return sampleFlameSpectralRamp(
+        t,
+        COL_EDGE,
+        COL_BODY,
+        COL_CORE,
+        vec2(0.02, 0.30),
+        vec2(0.18, 0.65),
+        vec2(0.55, 0.92),
+        0.80,
+        2.0
+    );
 }
 
 // ------------------------------------------------------------------------------
@@ -82,26 +114,25 @@ vec3 getSoulFirePlasmaColor(float t) {
 // seed: Random offset per block or surface
 float calculateFlameTongueDynamics(vec2 uv, float timeSec, float seed) {
     // Upward convective buoyancy speed
-    float upwardSpeed = 4.2;
-    float t = timeSec * upwardSpeed;
+    const float FLAME_BUOYANCY_SPEED = 4.2;
+    float t = timeSec * FLAME_BUOYANCY_SPEED;
 
     #ifdef FIRE_TURBULENCE
-    // Upward coordinate scaling (stretched along thermal plume)
-    vec2 p = vec2(uv.x * 3.2 + seed * 17.3, uv.y * 2.4 - t);
+    // 1st Octave: Primary buoyant convective vortices (ascent speed: 1.0 * t)
+    vec2 p1 = vec2(uv.x * 3.2 + seed * 17.3, uv.y * 2.4 - t);
+    float n1 = gradientNoise2D(p1);
 
-    // 1st Octave: Primary buoyant convective vortices
-    float n1 = gradientNoise2D(p);
-
-    // 2nd Octave: High-frequency swirling eddies & turbulent shear
+    // 2nd Octave: High-frequency swirling eddies & turbulent shear (ascent speed: 1.6 * t)
     vec2 p2 = vec2(uv.x * 6.5 - seed * 9.1, uv.y * 5.0 - t * 1.6);
     float n2 = gradientNoise2D(p2);
 
-    // 3rd Octave: Micro-flicker
+    // 3rd Octave: Micro-flicker with transverse cross-flow shear (horizontal drift: +0.8 * t, vertical ascent: 2.4 * t)
     vec2 p3 = vec2(uv.x * 12.0 + t * 0.8, uv.y * 10.0 - t * 2.4);
     float n3 = gradientNoise2D(p3);
 
-    // Combine multi-octave turbulence
-    float turbulence = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
+    // Strict partition-of-unity turbulence combination (0.55 + 0.30 + 0.15 = 1.00)
+    const vec3 HARMONIC_WEIGHTS = vec3(0.55, 0.30, 0.15);
+    float turbulence = n1 * HARMONIC_WEIGHTS.x + n2 * HARMONIC_WEIGHTS.y + n3 * HARMONIC_WEIGHTS.z;
     #else
     float turbulence = 0.5;
     #endif
@@ -125,45 +156,45 @@ float calculateFlameTongueDynamics(vec2 uv, float timeSec, float seed) {
 }
 
 // ------------------------------------------------------------------------------
-// 3. Micro-Ember Detachment & Floating Sparks
+// 3. Cellular Spark Field & Micro-Ember Detachment (SSOC)
 // ------------------------------------------------------------------------------
 
-// Evaluates tiny glowing sparks breaking away from the flame and drifting upward
-float calculateFloatingEmbers(vec2 uv, float timeSec, float seed) {
-    #ifndef FIRE_EMBERS
-    return 0.0;
-    #endif
-
-    float emberSpeed = 2.8;
-    float t = timeSec * emberSpeed;
-
-    vec2 emberCoord = vec2(uv.x * 8.0 + seed * 31.7, uv.y * 4.0 - t);
-    vec2 cell = floor(emberCoord);
-    vec2 fractCoord = fract(emberCoord);
-
+// Unified 3x3 cellular spark field evaluator
+// Evaluates point-like incandescent sparks with sinuous buoyancy oscillations and temporal twinkling
+float evaluateCellularSparkField(
+    vec2 gridCoord,
+    vec2 seedOffset,
+    float oscTime,
+    float oscAmp,
+    float baseRadius,
+    float radiusVariation,
+    float timeSec,
+    float twinkleFreq
+) {
+    vec2 cell = floor(gridCoord);
+    vec2 fractCoord = fract(gridCoord);
     float spark = 0.0;
 
-    // Check neighboring grid cells for point sparks
     for (int dy = -1; dy <= 1; ++dy) {
         for (int dx = -1; dx <= 1; ++dx) {
-            vec2 c = cell + vec2(float(dx), float(dy));
-            vec2 sparkPos = hash22(c + vec2(seed, 4.13));
+            vec2 offset = vec2(float(dx), float(dy));
+            vec2 c = cell + offset;
+            vec2 pos = hash22(c + seedOffset);
 
-            // Sinuous horizontal oscillation as spark rises
-            sparkPos.x += sin(t * 2.5 + sparkPos.y * 6.28) * 0.25;
+            // Sinuous horizontal oscillation from ascending vortex shedding
+            pos.x += sin(oscTime + pos.y * 6.2831853) * oscAmp;
 
-            vec2 delta = fractCoord - (vec2(float(dx), float(dy)) + sparkPos);
+            vec2 delta = fractCoord - (offset + pos);
             float dist = length(delta);
 
-            // Spark size & temporal twinkling
-            float sparkSize = 0.08 + hash21(c) * 0.06;
-            float twinkle = 0.5 + 0.5 * sin(timeSec * 15.0 + hash21(c + 9.2) * 6.28);
+            float radius = baseRadius;
+            if (radiusVariation > 0.0) {
+                radius += hash21(c) * radiusVariation;
+            }
 
-            // Sparks are more abundant above the flame base
-            float heightFactor = smoothstep(0.25, 0.95, uv.y);
-
-            if (dist < sparkSize) {
-                float intensity = (1.0 - dist / sparkSize) * twinkle * heightFactor;
+            if (dist < radius) {
+                float twinkle = 0.5 + 0.5 * sin(timeSec * twinkleFreq + hash21(c + 9.2) * 6.2831853);
+                float intensity = (1.0 - dist / radius) * twinkle;
                 spark = max(spark, intensity);
             }
         }
@@ -172,9 +203,43 @@ float calculateFloatingEmbers(vec2 uv, float timeSec, float seed) {
     return spark;
 }
 
+// Evaluates tiny glowing sparks breaking away from the flame and drifting upward
+float calculateFloatingEmbers(vec2 uv, float timeSec, float seed) {
+    #ifndef FIRE_EMBERS
+    return 0.0;
+    #endif
+
+    const float EMBER_SPEED = 2.8;
+    float t = timeSec * EMBER_SPEED;
+
+    // Upward drafting particle coordinate grid
+    vec2 emberCoord = vec2(uv.x * 8.0 + seed * 31.7, uv.y * 4.0 - t);
+    float spark = evaluateCellularSparkField(
+        emberCoord,
+        vec2(seed, 4.13),
+        t * 2.5,
+        0.25,
+        0.08,
+        0.06,
+        timeSec,
+        15.0
+    );
+
+    // Detached sparks concentrate primarily above the combustion zone
+    float heightFactor = smoothstep(0.25, 0.95, uv.y);
+    return spark * heightFactor;
+}
+
 // ------------------------------------------------------------------------------
 // 4. World Block Fire Master Shading (Terrain & Campfires)
 // ------------------------------------------------------------------------------
+
+// Ratio between procedural noise dynamics (65%) and vanilla sprite luminance (35%)
+// Retains vanilla block silhouette while driving organic convection
+const float FIRE_PROCEDURAL_BLEND = 0.65;
+
+// Contrast expansion factor for combustion dynamic range
+const float FIRE_CONTRAST_EXPANSION = 1.30;
 
 // Shading function for world block fire in gbuffers_terrain
 // baseTex: Sampled vanilla texture (used for quad coordinates & sprite boundary)
@@ -197,8 +262,8 @@ vec4 shadeBlockFire(vec4 baseTex, vec2 uv, vec3 worldCoord, float timeSec, bool 
     float flameDensity = calculateFlameTongueDynamics(localUV, timeSec, seed);
 
     // Blend procedural dynamics with base sprite structure to preserve block geometry
-    float combinedIntensity = mix(baseTex.r, flameDensity, 0.65);
-    combinedIntensity = clamp(combinedIntensity * 1.3, 0.0, 1.0);
+    float combinedIntensity = mix(baseTex.r, flameDensity, FIRE_PROCEDURAL_BLEND);
+    combinedIntensity = clamp(combinedIntensity * FIRE_CONTRAST_EXPANSION, 0.0, 1.0);
 
     // Compute spectral HDR radiance
     vec3 flameHDR;
@@ -215,7 +280,9 @@ vec4 shadeBlockFire(vec4 baseTex, vec2 uv, vec3 worldCoord, float timeSec, bool 
     // Add incandescent micro-embers
     float embers = calculateFloatingEmbers(localUV, timeSec, seed);
     if (embers > 0.01) {
-        vec3 emberColor = isSoulFire ? vec3(0.4, 1.6, 2.5) : vec3(3.0, 1.8, 0.6);
+        const vec3 SOUL_EMBER_COLOR = vec3(0.4, 1.6, 2.5);
+        const vec3 BLACKBODY_EMBER_COLOR = vec3(3.0, 1.8, 0.6);
+        vec3 emberColor = isSoulFire ? SOUL_EMBER_COLOR : BLACKBODY_EMBER_COLOR;
         flameHDR += emberColor * embers * 3.5;
     }
 
@@ -229,6 +296,14 @@ vec4 shadeBlockFire(vec4 baseTex, vec2 uv, vec3 worldCoord, float timeSec, bool 
 // 5. Cinematic Peripheral Screen Fire Overlay (Camera Burn Effect)
 // ------------------------------------------------------------------------------
 
+// Screen vignette clear-zone geometry:
+// Center offset (0.50, 0.42) shifts unobstructed opening downward to clear first-person crosshair
+const vec2 SCREEN_FIRE_FOCUS_CENTER = vec2(0.50, 0.42);
+// Anisotropic scaling factors stretched vertically for 16:9 widescreen viewports
+const vec2 SCREEN_FIRE_RADIAL_SCALE = vec2(1.15, 1.45);
+// Inner and outer clear-zone transition boundaries
+const vec2 SCREEN_FIRE_CLEAR_RANGE = vec2(0.35, 0.72);
+
 // Renders an immersive, non-obtrusive peripheral flame vignette when the player is on fire
 // uv: Normalized screen-space coordinates [0..1]
 // timeSec: Animation time
@@ -237,10 +312,10 @@ vec4 renderScreenFireVignette(vec2 uv, float timeSec) {
     return vec4(0.0);
     #endif
 
-    // 1. Center Clear Zone: Elliptical mask ensuring unobstructed center vision
-    vec2 centerOffset = (uv - vec2(0.5, 0.42)) * vec2(1.15, 1.45);
+    // 1. Center Clear Zone: Elliptical mask ensuring unobstructed center crosshair vision
+    vec2 centerOffset = (uv - SCREEN_FIRE_FOCUS_CENTER) * SCREEN_FIRE_RADIAL_SCALE;
     float radialDist = length(centerOffset);
-    float centerClearMask = smoothstep(0.35, 0.72, radialDist);
+    float centerClearMask = smoothstep(SCREEN_FIRE_CLEAR_RANGE.x, SCREEN_FIRE_CLEAR_RANGE.y, radialDist);
 
     // Focus fire primarily at bottom edge & corners
     float bottomEdge = 1.0 - uv.y; // 1 at bottom, 0 at top
@@ -265,29 +340,24 @@ vec4 renderScreenFireVignette(vec2 uv, float timeSec) {
     // 3. Blackbody Emission along screen border
     vec3 flameColor = getBlackbodyFlameColor(flameIntensity);
 
-    // 4. Drifting Sparks rising along screen edges
-    vec2 sparkUV = vec2(uv.x * 12.0, uv.y * 6.0 - timeSec * 3.0);
-    vec2 sparkCell = floor(sparkUV);
-    vec2 sparkFract = fract(sparkUV);
-
-    float screenSpark = 0.0;
-    for (int dy = -1; dy <= 1; ++dy) {
-        for (int dx = -1; dx <= 1; ++dx) {
-            vec2 c = sparkCell + vec2(float(dx), float(dy));
-            vec2 pos = hash22(c + 7.82);
-            pos.x += sin(timeSec * 4.0 + pos.y * 6.28) * 0.2;
-
-            float d = length(sparkFract - (vec2(float(dx), float(dy)) + pos));
-            if (d < 0.09) {
-                float tw = 0.5 + 0.5 * sin(timeSec * 20.0 + hash21(c) * 6.28);
-                screenSpark = max(screenSpark, (1.0 - d / 0.09) * tw);
-            }
-        }
-    }
+    // 4. Drifting Sparks rising along screen edges (SSOC shared spark evaluator)
+    const float SCREEN_SPARK_SPEED = 3.0;
+    vec2 sparkUV = vec2(uv.x * 12.0, uv.y * 6.0 - timeSec * SCREEN_SPARK_SPEED);
+    float screenSpark = evaluateCellularSparkField(
+        sparkUV,
+        vec2(7.82, 7.82),
+        timeSec * 4.0,
+        0.20,
+        0.09,
+        0.0,
+        timeSec,
+        20.0
+    );
 
     // Sparks only in peripheral vignette area
     screenSpark *= vignetteMask;
-    flameColor += vec3(3.2, 2.0, 0.8) * screenSpark * 4.0;
+    const vec3 SCREEN_SPARK_TINT = vec3(3.2, 2.0, 0.8);
+    flameColor += SCREEN_SPARK_TINT * screenSpark * 4.0;
 
     float alpha = clamp((flameIntensity * 0.85 + screenSpark * 0.95) * SCREEN_FIRE_OPACITY, 0.0, 1.0);
 
@@ -295,3 +365,4 @@ vec4 renderScreenFireVignette(vec2 uv, float timeSec) {
 }
 
 #endif // FIRE_GLSL
+

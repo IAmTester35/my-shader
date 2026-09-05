@@ -38,6 +38,9 @@ const vec3 ATM_BETA_OZONE       = vec3(0.650e-3, 1.881e-3, 0.085e-3); // Chappui
 // Solar irradiance constant (calibrated for game dynamic range & ACES tonemapping)
 const vec3 ATM_SOLAR_IRRADIANCE = vec3(1.00, 0.98, 0.95) * 16.0 * SUN_ILLUMINANCE;
 
+// Permanent atmospheric night airglow baseline radiance
+const vec3 ATM_AIRGLOW_RADIANCE = vec3(0.005, 0.009, 0.024);
+
 // --- Phase Functions ---
 float rayleighPhase(float cosTheta) {
     return (3.0 / (16.0 * PI)) * (1.0 + cosTheta * cosTheta);
@@ -170,6 +173,60 @@ vec3 getMoonColor(float moonHeight, float rain) {
     return max(directMoon, vec3(0.0));
 }
 
+// --- Belt of Venus & Earth Shadow Twilight Arch ---
+void applyBeltOfVenus(inout vec3 inScatter, vec3 rayDir, float cosThetaSun, float sunElev, float optViewR) {
+    #ifdef BELT_OF_VENUS
+    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > -0.02) {
+        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.2);
+        float archHeight = smoothstep(-0.02, 0.07, rayDir.y) * (1.0 - smoothstep(0.10, 0.28, rayDir.y));
+        float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
+        
+        // Earth shadow below the pink arch (dark blue-gray wedge)
+        float earthShadow = (1.0 - smoothstep(-0.02, 0.04, rayDir.y)) * antiSolarFactor * twilightStrength;
+        vec3 earthShadowCol = vec3(0.015, 0.022, 0.045) * earthShadow;
+        
+        // Pink/crimson arch of Belt of Venus
+        vec3 pinkArch = vec3(0.82, 0.38, 0.46) * (archHeight * antiSolarFactor * twilightStrength * 0.35);
+        inScatter = inScatter * (1.0 - earthShadow * 0.6) + pinkArch * exp(-optViewR * 0.4) + earthShadowCol;
+    }
+    #endif
+}
+
+// --- Dynamic Weather Overcast & Desert Sandstorm ---
+void applyDynamicWeatherAtmosphere(inout vec3 inScatter, vec3 rayDir, float sunElev, float cosThetaSun, float rain, BiomeAtmosphere biomeAtm) {
+    #ifdef DYNAMIC_WEATHER
+    if (rain > 0.0) {
+        #ifdef DESERT_SANDSTORM
+        if (biomeAtm.isArid) {
+            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
+            vec3 sandBase = vec3(0.82, 0.54, 0.26) * mix(0.18, 1.0, dayFactor);
+            
+            // Turbulent dust sheets blown across horizon by strong desert winds
+            vec2 dustUV = vec2(rayDir.x * 2.5 + rain * 0.5, rayDir.z * 2.5) / max(abs(rayDir.y) + 0.08, 0.08);
+            float dustTurbulence = fbm2D(dustUV * 0.35) * 0.25;
+            
+            // Vertical density gradient: thickest near ground, thinning out toward zenith
+            float heightDensity = exp(-max(rayDir.y, 0.0) * 3.5);
+            float sandFactor = saturate(rain * (0.65 + heightDensity * 0.35 + dustTurbulence));
+            
+            // Forward Mie scattering makes sun area glow intense fiery orange
+            float dustMie = pow(max(cosThetaSun, 0.0), 3.0) * 0.45 * dayFactor;
+            vec3 dustColor = sandBase * (1.0 + dustMie * vec3(1.2, 0.8, 0.4));
+            
+            inScatter = mix(inScatter, dustColor, sandFactor);
+        } else
+        #endif
+        {
+            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
+            vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
+            vec3 overcastNight = vec3(0.018, 0.022, 0.032);
+            vec3 overcast = mix(overcastNight, overcastDay, dayFactor);
+            inScatter = mix(inScatter, overcast, rain * 0.90);
+        }
+    }
+    #endif
+}
+
 // --- Physical Atmospheric Sky Radiance ---
 vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, LightningStrike strike, BiomeAtmosphere biomeAtm) {
     // Physical scattering and absorption coefficients modulated by biome & settings
@@ -229,9 +286,9 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     // Multiple scattering ambient fill with stratospheric twilight glow
     #ifdef SKY_MULTI_SCATTERING
     vec3 twilightGlow = vec3(0.045, 0.085, 0.26) * (1.0 - smoothstep(-0.15, 0.04, abs(sunElev + 0.04)));
-    vec3 multiScatterAmbient = (sunL0 * sunTransObs * max(sunElev, 0.0) + twilightGlow + vec3(0.005, 0.009, 0.024)) * 0.28 * MULTI_SCATTER_SCALE;
+    vec3 multiScatterAmbient = (sunL0 * sunTransObs * max(sunElev, 0.0) + twilightGlow + ATM_AIRGLOW_RADIANCE) * 0.28 * MULTI_SCATTER_SCALE;
     #else
-    vec3 multiScatterAmbient = vec3(0.005, 0.009, 0.024);
+    vec3 multiScatterAmbient = ATM_AIRGLOW_RADIANCE;
     #endif
 
     // Primary view raymarch integration (14 steps with power spacing)
@@ -287,22 +344,8 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
         inScatter += (sSun + sMoon + sMS) * tView * segLen;
     }
 
-    #ifdef BELT_OF_VENUS
     // Belt of Venus: anti-solar twilight arch and Earth shadow projection
-    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > -0.02) {
-        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.2);
-        float archHeight = smoothstep(-0.02, 0.07, rayDir.y) * (1.0 - smoothstep(0.10, 0.28, rayDir.y));
-        float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
-        
-        // Earth shadow below the pink arch (dark blue-gray wedge)
-        float earthShadow = (1.0 - smoothstep(-0.02, 0.04, rayDir.y)) * antiSolarFactor * twilightStrength;
-        vec3 earthShadowCol = vec3(0.015, 0.022, 0.045) * earthShadow;
-        
-        // Pink/crimson arch of Belt of Venus
-        vec3 pinkArch = vec3(0.82, 0.38, 0.46) * (archHeight * antiSolarFactor * twilightStrength * 0.35);
-        inScatter = inScatter * (1.0 - earthShadow * 0.6) + pinkArch * exp(-optView.r * 0.4) + earthShadowCol;
-    }
-    #endif
+    applyBeltOfVenus(inScatter, rayDir, cosThetaSun, sunElev, optView.r);
 
     #ifdef SKY_GROUND_FOG
     // Smooth planetary horizon haze & ground bounce (eliminates hard cut at horizon)
@@ -316,44 +359,14 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     #endif
 
     // Permanent atmospheric night airglow
-    vec3 airglow = vec3(0.005, 0.009, 0.024) * (biomeAtm.isCold ? 1.25 : 1.0) * exp(-optView.r * 0.4);
+    vec3 airglow = ATM_AIRGLOW_RADIANCE * (biomeAtm.isCold ? 1.25 : 1.0) * exp(-optView.r * 0.4);
     inScatter += airglow;
 
     // Apply Biome color grading tint
     inScatter *= biomeAtm.skyTint;
 
-    #ifdef DYNAMIC_WEATHER
     // Dynamic Weather Overcast & Sandstorm
-    if (rain > 0.0) {
-        #ifdef DESERT_SANDSTORM
-        if (biomeAtm.isArid) {
-            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 sandBase = vec3(0.82, 0.54, 0.26) * mix(0.18, 1.0, dayFactor);
-            
-            // Turbulent dust sheets blown across horizon by strong desert winds
-            vec2 dustUV = vec2(rayDir.x * 2.5 + rain * 0.5, rayDir.z * 2.5) / max(abs(rayDir.y) + 0.08, 0.08);
-            float dustTurbulence = fbm2D(dustUV * 0.35) * 0.25;
-            
-            // Vertical density gradient: thickest near ground, thinning out toward zenith
-            float heightDensity = exp(-max(rayDir.y, 0.0) * 3.5);
-            float sandFactor = saturate(rain * (0.65 + heightDensity * 0.35 + dustTurbulence));
-            
-            // Forward Mie scattering makes sun area glow intense fiery orange
-            float dustMie = pow(max(cosThetaSun, 0.0), 3.0) * 0.45 * dayFactor;
-            vec3 dustColor = sandBase * (1.0 + dustMie * vec3(1.2, 0.8, 0.4));
-            
-            inScatter = mix(inScatter, dustColor, sandFactor);
-        } else
-        #endif
-        {
-            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
-            vec3 overcastNight = vec3(0.018, 0.022, 0.032);
-            vec3 overcast = mix(overcastNight, overcastDay, dayFactor);
-            inScatter = mix(inScatter, overcast, rain * 0.90);
-        }
-    }
-    #endif
+    applyDynamicWeatherAtmosphere(inScatter, rayDir, sunElev, cosThetaSun, rain, biomeAtm);
 
     #ifdef STORM_LIGHTNING
     if (strike.isTriggered && strike.intensity > 0.005) {
@@ -367,27 +380,6 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     #endif
 
     return max(inScatter * SKY_RADIANCE_SCALE, vec3(0.0));
-}
-
-// 8-parameter compatibility wrapper
-vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float stormAzimuth, BiomeAtmosphere biomeAtm) {
-    LightningStrike strike;
-    strike.isTriggered = (stormLightning > 0.005);
-    strike.intensity = stormLightning;
-    strike.returnStroke = stormLightning;
-    strike.azimuth = (stormAzimuth > -50.0) ? stormAzimuth : 0.0;
-    strike.elevation = 0.20;
-    strike.strikeDir = normalize(vec3(cos(strike.azimuth) * cos(0.20), sin(0.20), sin(strike.azimuth) * cos(0.20)));
-    strike.seed = hash11(strike.azimuth * 47.19 + 3.1);
-    strike.strikeType = LIGHTNING_TYPE_CG;
-    strike.coreColor = vec3(1.15, 1.25, 1.50) * 55.0;
-    strike.sheathColor = vec3(0.35, 0.72, 1.30);
-    return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, strike, biomeAtm);
-}
-
-// 7-parameter compatibility wrapper
-vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
-    return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, stormLightning, -100.0, biomeAtm);
 }
 
 // Fast 4-step numerical integration for diffuse ambient and distance fog
@@ -431,9 +423,9 @@ vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector
 
     #ifdef SKY_MULTI_SCATTERING
     vec3 twilightGlow = vec3(0.045, 0.085, 0.26) * (1.0 - smoothstep(-0.15, 0.04, abs(sunElev + 0.04)));
-    vec3 multiScatterAmbient = (sunL0 * sunTransObs * max(sunElev, 0.0) + twilightGlow + vec3(0.005, 0.009, 0.024)) * 0.28 * MULTI_SCATTER_SCALE;
+    vec3 multiScatterAmbient = (sunL0 * sunTransObs * max(sunElev, 0.0) + twilightGlow + ATM_AIRGLOW_RADIANCE) * 0.28 * MULTI_SCATTER_SCALE;
     #else
-    vec3 multiScatterAmbient = vec3(0.005, 0.009, 0.024);
+    vec3 multiScatterAmbient = ATM_AIRGLOW_RADIANCE;
     #endif
 
     const int FAST_STEPS = 4;
@@ -462,6 +454,16 @@ vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector
         if (sunElev > -0.16) {
             vec3 tSunSample = getAtmosphericTransmittance(pSample, sunDir, betaR, betaM_ext, betaO);
             sSun = (tSunSample * sunL0) * (betaR * rR * phaseRSun + betaM_scat * rM * phaseMSun);
+
+            // Stratospheric twilight illumination when sun is just below horizon (Blue Hour)
+            if (sunElev < 0.02 && sunElev > -0.18 && hSample > 10.0) {
+                float straElev = sunElev + (hSample / ATM_PLANET_RADIUS);
+                if (straElev > -0.04) {
+                    float straFactor = smoothstep(-0.18, 0.01, sunElev) * exp(-(hSample - 25.0)*(hSample - 25.0) / 130.0);
+                    vec3 straCol = vec3(0.18, 0.34, 0.95) * 2.2 * (1.0 - smoothstep(0.0, 0.09, abs(sunElev + 0.04)));
+                    sSun += straCol * (betaR * rR * 1.6 + betaO * rO * 2.8) * straFactor;
+                }
+            }
         }
 
         vec3 sMoon = vec3(0.0);
@@ -474,41 +476,14 @@ vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector
         inScatter += (sSun + sMoon + sMS) * tView * segLen;
     }
 
-    #ifdef BELT_OF_VENUS
     // Belt of Venus: anti-solar twilight arch and Earth shadow projection
-    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > -0.02) {
-        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.2);
-        float archHeight = smoothstep(-0.02, 0.07, rayDir.y) * (1.0 - smoothstep(0.10, 0.28, rayDir.y));
-        float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
-        vec3 pinkArch = vec3(0.82, 0.38, 0.46) * (archHeight * antiSolarFactor * twilightStrength * 0.35);
-        inScatter += pinkArch * exp(-optView.r * 0.4);
-    }
-    #endif
+    applyBeltOfVenus(inScatter, rayDir, cosThetaSun, sunElev, optView.r);
 
-    inScatter += vec3(0.005, 0.009, 0.024) * (biomeAtm.isCold ? 1.25 : 1.0) * exp(-optView.r * 0.4);
+    inScatter += ATM_AIRGLOW_RADIANCE * (biomeAtm.isCold ? 1.25 : 1.0) * exp(-optView.r * 0.4);
     inScatter *= biomeAtm.skyTint;
 
-    #ifdef DYNAMIC_WEATHER
-    if (rain > 0.0) {
-        #ifdef DESERT_SANDSTORM
-        if (biomeAtm.isArid) {
-            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 sandBase = vec3(0.82, 0.54, 0.26) * mix(0.18, 1.0, dayFactor);
-            float heightDensity = exp(-max(rayDir.y, 0.0) * 3.5);
-            float dustMie = pow(max(cosThetaSun, 0.0), 3.0) * 0.45 * dayFactor;
-            vec3 sandstormColor = sandBase * (1.0 + dustMie * vec3(1.2, 0.8, 0.4));
-            inScatter = mix(inScatter, sandstormColor, rain * (0.70 + heightDensity * 0.25));
-        } else
-        #endif
-        {
-            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
-            vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
-            vec3 overcastNight = vec3(0.018, 0.022, 0.032);
-            vec3 overcast = mix(overcastNight, overcastDay, dayFactor);
-            inScatter = mix(inScatter, overcast, rain * 0.90);
-        }
-    }
-    #endif
+    // Dynamic Weather Overcast & Sandstorm
+    applyDynamicWeatherAtmosphere(inScatter, rayDir, sunElev, cosThetaSun, rain, biomeAtm);
 
     return max(inScatter * SKY_RADIANCE_SCALE, vec3(0.0));
 }

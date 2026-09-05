@@ -727,9 +727,4 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, vec3 moonDir, int moonPhase, float sunH
     return starsColor * visibility;
 }
 
-// 6-parameter backwards compatibility wrapper
-vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float timeSec, int worldTimeTicks, BiomeAtmosphere biomeAtm) {
-    return renderStarsAndMilkyWay(rayDir, vec3(0.0, -1.0, 0.0), 4, sunHeight, rain, timeSec, worldTimeTicks, biomeAtm);
-}
-
 #endif // CELESTIALS_GLSL

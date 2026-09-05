@@ -5,19 +5,20 @@
  * ==============================================================================
  *  HIGH-PRECISION PROCEDURAL & BLUE NOISE LIBRARY (GLSL 120 COMPLIANT)
  *  Features:
- *   1. Perlin / Simplex C2-continuous Gradient Noise 2D & 3D (Quintic Hermite)
+ *   1. C2-continuous Gradient Noise 2D & 3D (Quintic Hermite)
  *   2. FBM (Fractal Brownian Motion) multi-octave synthesis
- *   3. Voronoi / Cellular 2D noise
- *   4. Moments in Graphics (Christoph Peters) Blue Noise System:
- *      - Void-and-Cluster 64x64 blue noise texture sampling with R2 temporal offset
- *      - Procedural high-frequency Interleaved Gradient Blue Noise (IGN)
- *      - Triangular Probability Density Function (TPDF) shaping
- *      - Blue Noise raymarching jittering (god rays, volumetric clouds)
- *      - Blue Noise sRGB dithering to eliminate 8-bit color banding
+ *   3. Voronoi / Cellular 2D & 3D noise (Worley / Perlin-Worley)
+ *   4. High-Frequency Noise & Dithering System:
+ *      - Procedural high-frequency Interleaved Gradient Noise (Jorge Jimenez IGN)
+ *      - Triangular Probability Density Function (TPDF) shaping (Christoph Peters)
+ *      - Procedural raymarching jittering (eliminates volumetric slice banding)
+ *      - TPDF sRGB dithering to eliminate 8-bit color quantization banding
  * ==============================================================================
  */
 
-// --- 1. PSEUDO-RANDOM HASH FUNCTIONS (High Entropy, Artifact-Free) ---
+// --- 1. PSEUDO-RANDOM HASH FUNCTIONS (Dave Hoskins "Hash without Sine") ---
+// Deterministic pseudo-random mappings using fract multiplication and vector dot-products
+// Magic constants: 0.1031 scale spreads bits across mantissa; 33.33 offset breaks periodic alignment
 
 float hash11(float p) {
     p = fract(p * 0.1031);
@@ -56,11 +57,13 @@ vec2 grad2(vec2 p) {
     return vec2(cos(a), sin(a));
 }
 
-// High-performance 3D Unit Gradient Generator (Trigonometry-free for GPU efficiency)
+// Uniform 3D Unit Gradient Generator (Archimedes spherical projection: strictly isotropic, eliminates cube-corner clustering)
 vec3 grad3(vec3 p) {
-    vec3 h = hash33(p) * 2.0 - 1.0;
-    float l = length(h);
-    return l > 1e-4 ? h / l : vec3(0.0, 1.0, 0.0);
+    vec2 h = hash22(p.xy + p.z * 37.1);
+    float z = h.x * 2.0 - 1.0;
+    float phi = h.y * 6.28318530718;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    return vec3(r * cos(phi), r * sin(phi), z);
 }
 
 // --- 2. C2-CONTINUOUS GRADIENT NOISE (PERLIN / QUINTIC HERMITE) ---
@@ -143,8 +146,11 @@ float fbm3D_Fast(vec3 p, float cutoff) {
     p = p * 2.02 + vec3(1.23, 2.45, 3.67);
     v += 0.25 * gradientNoise3D(p);
     
-    // If macro density cannot reach the cloud boundary, early-exit
-    if (v + 0.19 < cutoff) return v;
+    // Analytical upper bound of remaining octaves:
+    // Octave 3 (0.125) + Octave 4 (0.0625) = 0.1875.
+    // Since gradientNoise3D outputs in [0, 1], maximum possible upper-octave addition is strictly 0.1875.
+    const float REMAINING_OCTAVES_BOUND = 0.1875;
+    if (v + REMAINING_OCTAVES_BOUND < cutoff) return v;
     
     p = p * 2.02 + vec3(1.23, 2.45, 3.67);
     v += 0.125 * gradientNoise3D(p);
@@ -213,8 +219,11 @@ float worley3D(vec3 p) {
 // to create the iconic billowy cauliflower shapes of Cumulus and Cumulonimbus clouds
 float perlinWorley3D(vec3 p, float cutoff) {
     float perlin = fbm3D_Fast(p, cutoff);
+    // Remap active cloud density range [0.22, 0.67] to [0, 1] (slope = 1.0 / (0.67 - 0.22) = 2.22)
     float vNorm = saturate((perlin - 0.22) * 2.22);
+    // Invert cellular Worley distance to carve convex billow crowns
     float worley = 1.0 - worley3D_Fast(p * 2.4 + vec3(0.5, 0.2, 0.8));
+    // Affine combination: 0.68 * vNorm + 0.52 * worley - 0.20 strictly sums to 1.00 at peak
     float pw = saturate(vNorm * 0.68 + worley * 0.52 - 0.20);
     return pw;
 }
@@ -247,8 +256,10 @@ float cirrocumulusRipples2D(vec2 p, float rayDirY) {
     waveRolls = mix(0.5, waveRolls, nyquistFade);
 
     // 4. Búp mây đối lưu Worley (Continuous cellular Worley billows)
+    // Anisotropic aspect ratio (35.2 vs 32.0) models wind-stretched cirrocumulus cloudlets
     vec2 cellUV = vec2(wpWind * 35.2, wpPerp * 32.0);
     float minD = voronoi2D(cellUV);
+    // Cell contraction scale 1.35 concentrates density into rounded compact billows
     float worleyBillow = clamp(1.0 - minD * 1.35, 0.0, 1.0);
     worleyBillow = mix(0.4, worleyBillow, nyquistFade);
 
@@ -259,6 +270,7 @@ float cirrocumulusRipples2D(vec2 p, float rayDirY) {
 
     // Tổng hợp: Búp mây tụ dọc theo các luống sóng và bị xé sợi
     float cloudConvection = worleyBillow * 0.60 + waveRolls * 0.40;
+    // 0.32 threshold transition width produces sharp yet anti-aliased cloud boundaries
     float density = clamp((cloudConvection * 1.25 - fbmDetail - 0.12) / 0.32, 0.0, 1.0);
     density = density * density * (3.0 - 2.0 * density);
 
@@ -303,10 +315,15 @@ float cirrusFilament2D(vec2 p, vec2 windDir) {
 }
 
 // WMO Genera Pattern: Altocumulus (Ac - Mây trung tích đàn cừu trôi tầng trung)
+// Mid-tropospheric (2,000 - 6,000m) stratiformis/perlucidus convective rolls ("mackerel sky" / sheep-herd)
+// Modulates two cellular Voronoi harmonics with transverse atmospheric gravity wave oscillations
 float altocumulusRolls2D(vec2 p) {
+    // Macro and meso cellular cloudlet distributions
     float v1 = 1.0 - voronoi2D(p * 3.8);
     float v2 = 1.0 - voronoi2D(p * 7.5);
+    // Transverse undulatus gravity wave oscillation coupled to cloudlet cores
     float wave = sin(p.x * 10.0 + p.y * 5.0 + v1 * 2.5) * 0.5 + 0.5;
+    // Energy-conserving weighting (0.55 + 0.25 + 0.20 = 1.00)
     return saturate(v1 * 0.55 + v2 * 0.25 + wave * 0.20);
 }
 
@@ -333,15 +350,21 @@ float getRaymarchJitter(vec2 screenPos, float frameTime) {
 }
 
 // Blue Noise TPDF Dithering for post-processing:
-// Dithers sRGB color before 8-bit quantization, eliminating banding on skies, sunsets, and clouds
-vec3 applyBlueNoiseDither(vec3 colorSRGB, vec2 screenPos, float frameCount) {
+// Converts uniform IGN samples to Christoph Peters' triangular distribution (TPDF on [-1, 1])
+// and applies quantization dither to eliminate color banding (parametrized by quantization steps)
+vec3 applyBlueNoiseDither(vec3 colorSRGB, vec2 screenPos, float frameCount, float quantSteps) {
     vec3 bn = vec3(
         blueNoiseIGN(screenPos, frameCount),
         blueNoiseIGN(screenPos + vec2(13.1, 7.3), frameCount),
         blueNoiseIGN(screenPos + vec2(29.7, 19.5), frameCount)
     );
     vec3 tpdf = toTriangularPDF(bn);
-    return clamp(colorSRGB + tpdf / 255.0, 0.0, 1.0);
+    return clamp(colorSRGB + tpdf / quantSteps, 0.0, 1.0);
+}
+
+// 8-bit default overload for final framebuffer quantization (255.0 steps)
+vec3 applyBlueNoiseDither(vec3 colorSRGB, vec2 screenPos, float frameCount) {
+    return applyBlueNoiseDither(colorSRGB, screenPos, frameCount, 255.0);
 }
 
 #endif // NOISE_GLSL

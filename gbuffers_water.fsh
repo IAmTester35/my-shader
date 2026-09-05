@@ -32,8 +32,7 @@ void main() {
 
     float sunHeight  = dot(sunDir, WORLD_UP);
     float moonHeight = dot(moonDir, WORLD_UP);
-    float stormLightning = getStormLightningFlash(rainStrength, frameTimeCounter);
-    float stormAzimuth = getStormLightningAzimuth(frameTimeCounter);
+    LightningStrike strike = evaluateLightningState(rainStrength, frameTimeCounter);
 
     // Smooth biome transition
     BiomeAtmosphere biomeAtm = getSmoothBiomeAtmosphere(biome_category, biome, fogColor);
@@ -53,7 +52,7 @@ void main() {
 
     // Sky and sun reflections with smoothly blended biome atmospheric coloring
     vec3 reflectDir = reflect(-viewDir, waveNormal);
-    vec3 reflectedSky = calculateAtmosphericSky(reflectDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, stormAzimuth, biomeAtm);
+    vec3 reflectedSky = calculateAtmosphericSky(reflectDir, sunDir, moonDir, WORLD_UP, rainStrength, strike, biomeAtm);
 
     // Specular sun glint
     vec3 sunHalf = normalize(viewDir + sunDir);

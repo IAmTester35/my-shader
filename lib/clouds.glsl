@@ -33,6 +33,12 @@
 #define GENUS_CUMULUS       9
 #define GENUS_CUMULONIMBUS  10
 
+// Procedural Density & Raymarch Lighting Parameters
+#define CLOUD_EROSION_MIN_DENSITY  0.02   // Minimum density threshold to trigger high-frequency cellular erosion
+#define CLOUD_SHADOW_MIN_DENSITY   0.008  // Minimum density threshold to execute 3-step directional shadow raymarch
+#define CLOUD_LIGHT_EXTINCTION     0.045  // Attenuation coefficient along directional light shadow cone
+#define CLOUD_POWDER_EXPONENT      4.8    // Exponent for forward-scattering powder-sugar effect
+
 struct CloudResult {
     vec4 color;           // rgb = integrated radiance, a = optical opacity (1.0 - transmittance)
     float transmittance;  // accumulated transmittance for exact physical radiance transport
@@ -61,6 +67,10 @@ int getActiveCloudGenus(float rain, float stormLightning, BiomeAtmosphere biomeA
 
 // 3D Cloud Density Evaluation for Low / Mid / Vertical Genera
 float sampleCloudDensity3D(vec3 worldPos, float relHeight, int genus, float rain, float timeSec, BiomeAtmosphere biomeAtm) {
+    if (genus == GENUS_AUTO) {
+        genus = GENUS_CUMULUS;
+    }
+
     // 0. High-tier ice crystal genera (>6000m) have zero density in the lower convective slab
     if (genus == GENUS_CIRRUS || genus == GENUS_CIRROCUMULUS || genus == GENUS_CIRROSTRATUS) {
         return 0.0;
@@ -138,7 +148,7 @@ float sampleCloudDensity3D(vec3 worldPos, float relHeight, int genus, float rain
     density *= heightProfile;
 
     // 5. High-frequency cellular erosion: billowy cauliflower edges
-    if (density > 0.02) {
+    if (density > CLOUD_EROSION_MIN_DENSITY) {
         float detailWorley = 1.0 - worley3D_Fast(p * 3.5 + vec3(relHeight * 1.5, 0.0, relHeight * 0.8));
         density = saturate(density - detailWorley * 0.22);
     }
@@ -238,7 +248,7 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
 
         float density = sampleCloudDensity3D(pos, relHeight, genus, rain, timeSec, biomeAtm);
 
-        if (density > 0.008) {
+        if (density > CLOUD_SHADOW_MIN_DENSITY) {
             // Directional light raymarch for self-shadowing and volumetric depth (Multi-Step Exponential Cone)
             #ifdef CLOUD_SHADOWING
             float optDepthLight = 0.0;
@@ -259,9 +269,9 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
             optDepthLight += sampleCloudDensity3D(lp3, lrh3, genus, rain, timeSec, biomeAtm) * 86.0;
 
             // Multi-scale Beer-Lambert attenuation along light ray
-            float lightTransmittance = exp(-optDepthLight * 0.045);
+            float lightTransmittance = exp(-optDepthLight * CLOUD_LIGHT_EXTINCTION);
             // Powder-sugar effect: clouds brighten along illuminated rims
-            float powder = 1.0 - exp(-density * 4.8);
+            float powder = 1.0 - exp(-density * CLOUD_POWDER_EXPONENT);
             float shadow = mix(lightTransmittance * powder, 1.0, 0.12);
             #else
             float shadow = 0.85;
@@ -396,6 +406,10 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
 // Compatibility wrapper accepting float stormLightning
 CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float timeSec, BiomeAtmosphere biomeAtm) {
     LightningStrike strike = evaluateLightningState(rain, timeSec);
+    strike.intensity = max(strike.intensity, stormLightning);
+    if (stormLightning > 0.005) {
+        strike.isTriggered = true;
+    }
     return renderVolumetric3DClouds(rayDir, sunDir, moonDir, upVector, rain, strike, timeSec, biomeAtm);
 }
 
