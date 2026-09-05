@@ -11,14 +11,21 @@
 // --- Biome Adaptation ---
 #define BIOME_ADAPTATION            // Climate-aware sky scattering, fog, clouds, auroras & weather
 
-// --- Sky & Atmosphere ---
-#define RAYLEIGH_SCATTERING         // Realistic Rayleigh atmospheric scattering
+// --- Sky & Atmosphere (Physically Based Optics) ---
+#define PHYSICAL_ATMOSPHERE         // Physically based atmospheric scattering & solar illumination
+#define RAYLEIGH_SCATTERING         // Realistic Rayleigh atmospheric scattering (molecular lambda^-4)
+#define RAYLEIGH_SCALE      1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Molecular scattering optical thickness
 #define MIE_SCATTERING              // Forward Mie aerosol/haze scattering
+#define MIE_TURBIDITY       1.0     // [0.5 0.75 1.0 1.25 1.5 2.0 3.0] Atmospheric aerosol turbidity & haze
 #define OZONE_ABSORPTION            // Chappuis ozone layer absorption (deep blue/purple twilight)
+#define OZONE_SCALE         1.0     // [0.0 0.5 0.75 1.0 1.25 1.5 2.0] Stratospheric ozone concentration
 #define BELT_OF_VENUS               // Anti-solar twilight arch & Earth shadow projection
 #define SKY_MULTI_SCATTERING        // Multi-scattering ambient sky fill
+#define MULTI_SCATTER_SCALE 1.0     // [0.0 0.5 0.75 1.0 1.25 1.5 2.0] Secondary scattering intensity
 #define SKY_GROUND_FOG              // Horizon and altitude atmospheric blending
 #define ATMOSPHERE_DENSITY  1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Atmosphere optical thickness
+#define SUN_ILLUMINANCE     1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Physical solar irradiance multiplier
+#define SKY_RADIANCE_SCALE  1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Sky dome radiance exposure
 
 // --- Sun ---
 #define ENABLE_SUN                  // Custom procedural sun disc and atmospheric flare
@@ -36,12 +43,13 @@
 // --- Moon ---
 #define ENABLE_MOON                 // Custom high-detail procedural moon
 #define MOON_SIZE           1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Angular diameter of the moon
+#define MOON_BRIGHTNESS     0.80    // [0.2 0.4 0.6 0.8 1.0 1.2 1.5] Moon surface radiance / brightness
 #define MOON_PHASES                 // Realistic 8-phase lunar cycle based on world moonPhase
 #define MOON_SURFACE_DETAIL         // Procedural lunar maria (basalt seas) and crater relief
 #define MOON_CRATER_RELIEF          // 3D normal-mapped crater rim relief along terminator
 #define MOON_EARTHSHINE             // Subtle illumination of the unlit lunar crescent
 #define MOON_HALO                   // Ethereal lunar atmospheric halo / ice crystal ring
-#define MOON_HALO_INTENSITY 0.8     // [0.0 0.5 0.8 1.0 1.2 1.5 2.0] Halo brightness
+#define MOON_HALO_INTENSITY 0.4     // [0.0 0.2 0.4 0.6 0.8 1.0 1.5] Halo brightness
 
 // --- Night Sky & Celestials (NASA SVS 4851 Deep Star Maps Edition) ---
 #define ENABLE_STARS                // High-density procedural star field
@@ -99,7 +107,22 @@
 #define LIGHTNING_INTENSITY 1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Brightness scale of lightning discharges
 #define DESERT_SANDSTORM            // Replaces rain with dust/sandstorm in desert/mesa biomes
 #define RAIN_STREAKS                // Enhanced translucent raindrops with motion blur and lighting
+#define PROCEDURAL_RAIN             // Aerodynamic sub-pixel needle raindrop streaks
+#define RAIN_MIE_GLISTEN            // Strong forward Mie scattering glisten when backlit
+#define PROCEDURAL_SNOW             // 6-fold dendritic Keplerian hexagonal snowflakes (D6h symmetry)
+#define SNOW_FLUTTER                // Aerodynamic fluttering tumble & micro-turbulence
+#define SNOW_DIAMOND_DUST           // Micro-facet specular sparkling on falling ice crystals
+#define SNOW_CRYSTAL_SIZE   1.0     // [0.5 0.75 1.0 1.25 1.5] Scale of procedural snowflakes
 #define WETNESS_EFFECT              // Puddle darkening and ground slickness during rainfall
+
+// --- Fire & Plasma Thermodynamics ---
+#define CINEMATIC_FIRE              // Thermodynamic blackbody fire and convective plasma
+#define FIRE_BLACKBODY_CORE         // Ultra-bright >2000K incandescent white-yellow reaction core
+#define FIRE_TURBULENCE             // Buoyant thermal convective plumes and swirling flame licks
+#define SOUL_FIRE_SPECTRAL          // High-energy Swan-band ionized cyan plasma for soul fire
+#define FIRE_EMBERS                 // Detached glowing embers and floating sparks drifting upward
+#define CINEMATIC_SCREEN_FIRE       // Peripheral heat and flame vignette when player is burning
+#define SCREEN_FIRE_OPACITY 0.75    // [0.3 0.5 0.7 0.75 0.85 1.0] Intensity of camera fire overlay
 
 // --- Post-Processing & Color ---
 #define TONEMAP_ACES                // Academy Color Encoding System (ACES) filmic tonemapping

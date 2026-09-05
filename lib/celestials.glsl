@@ -18,18 +18,13 @@
 vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
     if (rainStrength > 0.95 || sunHeight < -0.18) return vec4(0.0);
 
-    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 4.2;
-    vec3 sunsetColor  = vec3(1.00, 0.46, 0.09) * 3.2;
-    vec3 horizonColor = vec3(0.96, 0.20, 0.03) * 2.6;
+    // Physically based solar radiance attenuated by atmospheric transmittance
+    vec3 physicalSun = getSunColor(sunHeight, 0.0) * (3.8 / max(ATM_SOLAR_IRRADIANCE.r * 0.14, 0.01));
+    vec3 currentSunColor = max(physicalSun, vec3(0.02, 0.005, 0.001));
 
     if (biomeAtm.isArid) {
-        sunsetColor = mix(sunsetColor, vec3(1.00, 0.32, 0.04) * 3.4, biomeAtm.sandstormFactor);
+        currentSunColor = mix(currentSunColor, currentSunColor * vec3(1.15, 0.85, 0.60), biomeAtm.sandstormFactor);
     }
-
-    float sunsetT  = clamp(1.0 - sunHeight * 4.0, 0.0, 1.0);
-    float horizonT = clamp(-sunHeight * 8.0 + 0.4, 0.0, 1.0);
-    vec3 currentSunColor = mix(noonColor, sunsetColor, sunsetT);
-    currentSunColor = mix(currentSunColor, horizonColor, horizonT);
 
     // Khúc xạ khí quyển nén dẹt trục thẳng đứng khi mặt trời sát chân trời
     vec2 sunCoord = localCoord;
@@ -178,29 +173,29 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
 
         #ifdef MOON_EARTHSHINE
         // Ánh đất dịu nhẹ phản chiếu phần tối của mặt trăng
-        illumination += 0.045 * (1.0 - illumination);
+        illumination += 0.025 * (1.0 - illumination);
         #endif
         #else
         float illumination = 1.0;
         #endif
 
-        // Cân chỉnh cường độ phát xạ vừa vặn (1.15) để giữ trọn vẹn chi tiết khi qua tonemapping ACES
-        moonEmission += moonBaseColor * albedo * illumination * 1.15 * edgeAA;
+        // Cân chỉnh cường độ phát xạ theo MOON_BRIGHTNESS giữ trọn vẹn chi tiết bề mặt
+        moonEmission += moonBaseColor * albedo * illumination * (0.85 * MOON_BRIGHTNESS) * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
     // Quầng sáng khí quyển & vòng tinh thể băng 22 độ (Lunar Halo)
     #ifdef MOON_HALO
     // Hào quang khuếch tán mềm mại, dịu êm
-    float haloGlow = exp(-distToCenter * 2.6) * 0.06 * MOON_HALO_INTENSITY;
+    float haloGlow = exp(-distToCenter * 2.8) * 0.035 * MOON_HALO_INTENSITY;
     haloGlow *= mix(1.0, 1.4, biomeAtm.auroraStrength / 1.8);
 
     // Vành hào quang 22 độ siêu mờ ảo, phân bố Gauss rộng không còn đường viền sắc
     float ringR = abs(distToCenter - 0.72);
-    float ringIntensity = (biomeAtm.isCold ? 0.06 : 0.012) * MOON_HALO_INTENSITY;
+    float ringIntensity = (biomeAtm.isCold ? 0.035 : 0.008) * MOON_HALO_INTENSITY;
     float haloRing = exp(-ringR * ringR * 26.0) * ringIntensity;
 
-    vec3 haloColor = vec3(0.68, 0.78, 0.95);
+    vec3 haloColor = vec3(0.65, 0.75, 0.92);
     moonEmission += haloColor * (haloGlow + haloRing);
     alpha = max(alpha, clamp((haloGlow + haloRing) * 1.0, 0.0, 1.0));
     #endif

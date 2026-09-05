@@ -105,7 +105,7 @@ void main() {
                     godrayColor = getSunColor(sunHeight, rainStrength);
                     if (biomeAtm.isArid) godrayColor = mix(godrayColor, godrayColor * vec3(1.1, 0.85, 0.65), biomeAtm.sandstormFactor);
                 } else {
-                    godrayColor = getMoonColor(lightHeight, rainStrength) * 1.8;
+                    godrayColor = getMoonColor(lightHeight, rainStrength) * 0.90;
                 }
 
                 finalColor += godrayColor * rayDensity * edgeFade * 0.58 * GODRAYS_INTENSITY;

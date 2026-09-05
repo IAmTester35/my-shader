@@ -171,19 +171,28 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
     float cosSun     = dot(rayDir, sunDir);
     float cosMoon    = dot(rayDir, moonDir);
 
-    // Light source colors
-    vec3 sunLight  = getSunColor(sunHeight, rain);
-    vec3 moonLight = getMoonColor(moonHeight, rain);
-    vec3 skyLight  = getAtmosphericFogColor(rayDir, sunDir, moonDir, upVector, rain, strike, biomeAtm) * 0.85;
+    // Altitude-adjusted direct sunlight and moonlight (Alpenglow horizon depression)
+    float cloudSunElev  = sunHeight + 0.016;
+    float cirrusSunElev = sunHeight + 0.052;
+    vec3 cloudSunLight  = getSunColor(cloudSunElev, rain);
+    vec3 cirrusSunLight = getSunColor(cirrusSunElev, rain);
+    vec3 cloudMoonLight = getMoonColor(moonHeight + 0.016, rain);
+    vec3 cirrusMoonLight= getMoonColor(moonHeight + 0.052, rain);
 
-    // Multiple scattering phase function: isotropic diffuse scattering + forward silver lining + backscatter glory
+    // Directional hemispherical sky ambient
+    vec3 L_zenith = calculateAtmosphericSky(upVector, sunDir, moonDir, upVector, rain, strike, biomeAtm);
+    vec3 horizonDir = normalize(vec3(rayDir.x, max(rayDir.y * 0.25, 0.02), rayDir.z));
+    vec3 L_horizon = calculateAtmosphericSky(horizonDir, sunDir, moonDir, upVector, rain, strike, biomeAtm);
+    vec3 L_ground = (cloudSunLight * max(sunHeight, 0.0) + L_zenith) * 0.14 * biomeAtm.skyTint;
+
+    // Dual-lobe Henyey-Greenstein phase function (silver lining + glory)
     #ifdef CLOUD_SILVER_LINING
-    float forwardScat = pow(max(cosSun, 0.0), 8.0) * 2.8;
-    float backScat    = pow(max(-cosSun, 0.0), 3.0) * 0.45;
-    float phaseSun    = 0.52 + forwardScat + backScat;
+    float hg1 = (1.0 - 0.64) / pow(max(1.64 - 1.60 * cosSun, 1e-4), 1.5);
+    float hg2 = (1.0 - 0.0484) / pow(max(1.0484 + 0.44 * cosSun, 1e-4), 1.5);
+    float phaseSun = mix(0.55, 0.72 * hg1 + 0.28 * hg2, 0.40);
 
-    float forwardMoon = pow(max(cosMoon, 0.0), 6.0) * 2.0;
-    float phaseMoon   = 0.50 + forwardMoon;
+    float hgMoonFwd = (1.0 - 0.64) / pow(max(1.64 - 1.60 * cosMoon, 1e-4), 1.5);
+    float phaseMoon = mix(0.50, hgMoonFwd, 0.32);
     #else
     float phaseSun  = 0.75;
     float phaseMoon = 0.75;
@@ -244,18 +253,19 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
             float shadow = 0.85;
             #endif
 
-            // Direct directional illumination + ambient multiple scattering
-            vec3 directSun  = sunLight * shadow * phaseSun * 1.35;
-            vec3 directMoon = moonLight * shadow * phaseMoon * 1.35;
+            // Ambient sky light bounce (cloud tops receive zenith Rayleigh sky, cloud bottoms catch ground bounce)
+            vec3 ambientSky = mix(L_ground * 1.15 + L_horizon * 0.25, L_zenith * 0.85 + L_horizon * 0.35, relHeight);
 
-            // Ambient sky light bounce (underside of clouds catches ambient atmospheric light)
-            vec3 ambientSky = skyLight * mix(0.55, 1.10, relHeight);
-            
-            // Sunset crimson edge glow
+            // Direct directional illumination with multi-scattering softening
+            float multiScatter = mix(shadow, pow(shadow, 0.35), 0.30);
+            vec3 directSun  = cloudSunLight * multiScatter * phaseSun * 0.95;
+            vec3 directMoon = cloudMoonLight * shadow * phaseMoon * 0.95;
+
+            // Physical sunset forward rim glow
             float sunsetFactor = clamp(1.0 - abs(sunHeight) * 3.5, 0.0, 1.0);
-            vec3 sunsetTint = vec3(1.0, 0.52, 0.28) * sunsetFactor * max(cosSun, 0.0) * 1.8;
+            vec3 sunsetRim = cloudSunLight * (sunsetFactor * pow(max(cosSun, 0.0), 4.0) * 0.45);
 
-            vec3 stepRadiance = directSun + directMoon + ambientSky + sunsetTint;
+            vec3 stepRadiance = directSun + directMoon + ambientSky + sunsetRim;
 
             // Weather rain & thunderstorm lighting adaptation
             if (rain > 0.0) {
@@ -324,7 +334,7 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
         cirrusD *= (1.0 - rain * 1.4);
 
         if (cirrusD > 0.01) {
-            vec3 cirrusLight = sunLight * phaseSun * 0.95 + moonLight * phaseMoon * 0.70 + skyLight * 0.60;
+            vec3 cirrusLight = cirrusSunLight * phaseSun * 0.95 + cirrusMoonLight * phaseMoon * 0.70 + (L_zenith * 0.50 + L_horizon * 0.30);
 
             // Optical 22° Halo around Sun & Moon for Cirrostratus ice crystals
             #ifdef CLOUD_ICE_HALO
@@ -332,19 +342,19 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
                 // 22° Ice crystal refraction ring (cos(22°) ≈ 0.92718)
                 float haloSunDist  = abs(cosSun  - 0.92718);
                 float haloMoonDist = abs(cosMoon - 0.92718);
-                float haloSun  = exp(-haloSunDist  * haloSunDist  / 0.00045) * 2.2 * max(sunHeight, 0.0);
+                float haloSun  = exp(-haloSunDist  * haloSunDist  / 0.00045) * 2.2 * max(cirrusSunElev, 0.0);
                 float haloMoon = exp(-haloMoonDist * haloMoonDist / 0.00045) * 1.8 * max(moonHeight, 0.0);
 
                 // Chromatic dispersion (red/orange on inner rim, pale blue on outer rim)
-                vec3 sunHaloColor  = vec3(1.1, 0.95, 0.82) * haloSun;
+                vec3 sunHaloColor  = (cirrusSunLight * 0.75 + vec3(0.35)) * haloSun;
                 vec3 moonHaloColor = vec3(0.85, 0.95, 1.1) * haloMoon;
                 cirrusLight += sunHaloColor + moonHaloColor;
             }
             #endif
 
-            // Sunset golden/crimson illumination on high ice crystals
-            float sunsetHigh = clamp(1.0 - abs(sunHeight + 0.04) * 3.5, 0.0, 1.0);
-            cirrusLight += vec3(1.0, 0.58, 0.38) * sunsetHigh * 1.4 * max(cosSun, 0.0);
+            // Sunset golden/crimson illumination on high ice crystals (Alpenglow)
+            float sunsetHigh = clamp(1.0 - abs(cirrusSunElev) * 3.2, 0.0, 1.0);
+            cirrusLight += cirrusSunLight * (sunsetHigh * pow(max(cosSun, 0.0), 2.0) * 0.75);
 
             float cirrusTrans = exp(-cirrusD * 1.2);
             integratedLight += cirrusLight * (1.0 - cirrusTrans) * transmittance;
@@ -353,8 +363,13 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
     }
     #endif
 
-    // Apply horizon distance fade to integrated results
-    integratedLight *= visibility;
+    // Atmospheric aerial perspective / in-scattering between observer and clouds
+    vec3 betaExt = (ATM_BETA_RAYLEIGH * RAYLEIGH_SCALE + ATM_BETA_MIE_EXT * (MIE_TURBIDITY * biomeAtm.hazeDensity)) * ATMOSPHERE_DENSITY;
+    vec3 airTau = betaExt * (tStart * 0.001 * 0.28);
+    vec3 airTransmittance = exp(-airTau);
+    vec3 airInscatter = L_horizon * (vec3(1.0) - airTransmittance);
+
+    integratedLight = (integratedLight * airTransmittance + airInscatter * (1.0 - transmittance)) * visibility;
     float finalTransmittance = mix(1.0, transmittance, visibility);
     float finalOpacity = saturate(1.0 - finalTransmittance);
 

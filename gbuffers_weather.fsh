@@ -66,6 +66,7 @@ void main() {
     }
     #endif
 
-    vec4 shadedParticle = shadeRainParticle(tex, totalLight, frameTimeCounter, biomeAtm);
+    vec4 shadedParticle = shadePrecipitationParticle(tex, texCoord, totalLight, directLight, forwardSun, forwardMoon, frameTimeCounter, worldPos, biomeAtm);
+    if (shadedParticle.a < 0.01) discard;
     gl_FragColor = shadedParticle;
 }

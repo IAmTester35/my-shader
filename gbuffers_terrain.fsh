@@ -4,6 +4,8 @@ varying vec2 texCoord;
 varying vec2 lmcoord;
 varying vec4 vertexColor;
 varying vec3 normal;
+varying vec3 worldPos;
+varying float blockId;
 
 uniform sampler2D texture;
 uniform mat4 gbufferModelViewInverse;
@@ -22,10 +24,30 @@ uniform int biome;
 #include "lib/biome.glsl"
 #include "lib/atmosphere.glsl"
 #include "lib/weather.glsl"
+#include "lib/fire.glsl"
 
 void main() {
     vec4 albedo = texture2D(texture, texCoord) * vertexColor;
     if (albedo.a < 0.1) discard;
+
+    // Detect fire or soul fire via block ID and spectral signature fallback
+    int bId = int(blockId + 0.5);
+    bool isFireBlock = (bId == 10001);
+    bool isSoulFireBlock = (bId == 10002);
+
+    bool isSpectralFire = (lmcoord.x > 0.82 && albedo.r > 0.70 && albedo.g > 0.25 && albedo.b < 0.35 && (albedo.r - albedo.b > 0.35));
+    bool isSpectralSoulFire = (lmcoord.x > 0.65 && albedo.b > 0.65 && albedo.g > 0.40 && albedo.r < 0.40);
+
+    bool isFire = isFireBlock || isSpectralFire;
+    bool isSoulFire = isSoulFireBlock || isSpectralSoulFire;
+
+    #ifdef CINEMATIC_FIRE
+    if (isFire || isSoulFire) {
+        vec4 shadedFire = shadeBlockFire(albedo, texCoord, worldPos, frameTimeCounter, isSoulFire);
+        gl_FragColor = shadedFire;
+        return;
+    }
+    #endif
 
     vec3 sunDir = getSunDirWorld(sunPosition, gbufferModelViewInverse);
     vec3 moonDir = getMoonDirWorld(moonPosition, gbufferModelViewInverse);
