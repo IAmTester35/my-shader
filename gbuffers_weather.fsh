@@ -58,8 +58,11 @@ void main() {
     vec3 totalLight = ambient + directLight;
 
     #ifdef STORM_LIGHTNING
-    if (stormLightning > 0.01) {
-        totalLight += vec3(0.9, 0.95, 1.15) * stormLightning * 2.5 * skyLightmap;
+    if (stormLightning > 0.005) {
+        LightningStrike strike = evaluateLightningState(rainStrength, frameTimeCounter);
+        if (strike.isTriggered && strike.intensity > 0.005) {
+            totalLight += (strike.coreColor * 0.10 + strike.sheathColor * 2.0) * strike.intensity * 2.0 * skyLightmap;
+        }
     }
     #endif
 

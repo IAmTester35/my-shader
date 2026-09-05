@@ -26,7 +26,7 @@
 #define SUN_LIMB_DARKENING          // 3-term polynomial solar limb darkening
 #define SUN_ATMOSPHERIC_FLATTENING  // Atmospheric refraction flattening near horizon
 #define SUN_CHROMATIC_CORONA        // Multi-spectral chromatic plasma corona ring
-#define SUN_CORONA_INTENSITY 1.4    // [0.0 0.5 1.0 1.2 1.4 1.8 2.5] Intensity of solar corona glow
+#define SUN_CORONA_INTENSITY 1.0    // [0.0 0.5 1.0 1.2 1.4 1.8 2.5] Intensity of solar corona glow
 #define SUN_GLARE                   // Wide-angle atmospheric solar glare
 #define SOLAR_DIFFRACTION_SPIKES    // Anamorphic 6-point solar flare diffraction spikes
 #define GODRAYS                     // Volumetric crepuscular light shafts through clouds and horizon
@@ -41,7 +41,7 @@
 #define MOON_CRATER_RELIEF          // 3D normal-mapped crater rim relief along terminator
 #define MOON_EARTHSHINE             // Subtle illumination of the unlit lunar crescent
 #define MOON_HALO                   // Ethereal lunar atmospheric halo / ice crystal ring
-#define MOON_HALO_INTENSITY 1.2     // [0.0 0.5 1.0 1.2 1.5 2.0] Halo brightness
+#define MOON_HALO_INTENSITY 0.8     // [0.0 0.5 0.8 1.0 1.2 1.5 2.0] Halo brightness
 
 // --- Night Sky & Celestials (NASA SVS 4851 Deep Star Maps Edition) ---
 #define ENABLE_STARS                // High-density procedural star field
@@ -62,20 +62,41 @@
 #define AURORA_INTENSITY    1.35    // [0.0 0.5 1.0 1.35 1.6 2.0] Aurora brightness
 #define AURORA_RAY_STREAMERS        // High-definition vertical auroral ray streamers
 
-// --- Clouds (High-End Volumetric Raymarched) ---
+// --- Clouds (WMO 10 Genera High-End Volumetric Raymarched) ---
 #define ENABLE_CLOUDS               // Enable custom cloud system
 #define VOLUMETRIC_3D_CLOUDS        // True 3D raymarched volumetric cloud slab for high-end PCs
-#define VOLUMETRIC_CLOUD_STEPS 20   // [12 16 20 24 32] Raymarch sample count
-#define CLOUD_LAYERS        2       // [1 2] 1: Single deck, 2: Dual cumulus & cirrus decks
+#ifndef VOLUMETRIC_CLOUD_STEPS
+#define VOLUMETRIC_CLOUD_STEPS 20   // [12 16 20 24 28 32] Raymarch sample count
+#endif
+#ifndef CLOUD_LAYERS
+#define CLOUD_LAYERS        2       // [1 2 3] 1: Single deck, 2: Dual decks, 3: Multi-tier WMO
+#endif
+#ifndef CLOUD_SPEED
 #define CLOUD_SPEED         1.0     // [0.2 0.5 1.0 1.5 2.0] Wind drift speed
-#define CLOUD_DENSITY       1.0     // [0.5 0.75 1.0 1.25 1.5] Base cloud thickness
+#endif
+#ifndef CLOUD_DENSITY
+#define CLOUD_DENSITY       1.0     // [0.5 0.75 1.0 1.25 1.5] Base cloud optical thickness
+#endif
+#ifndef CLOUD_COVERAGE
+#define CLOUD_COVERAGE      1.0     // [0.4 0.6 0.8 1.0 1.2 1.4] Sky cloud coverage factor
+#endif
+#ifndef CLOUD_WMO_GENUS
+#define CLOUD_WMO_GENUS     0       // [0 1 2 3 4 5 6 7 8 9 10] 0: Auto (Weather/Biome), 1: Cirrus, 2: Cirrocumulus, 3: Cirrostratus, 4: Altocumulus, 5: Altostratus, 6: Stratocumulus, 7: Stratus, 8: Nimbostratus, 9: Cumulus, 10: Cumulonimbus
+#endif
 #define CLOUD_SILVER_LINING         // Dual-lobe Henyey-Greenstein forward scattering rim
 #define CLOUD_SHADOWING             // Directional self-shadowing and powder sugar effect
+#define CLOUD_ICE_HALO              // Optical 22° Solar/Lunar ice crystal refraction halo for Cirrostratus
+
 
 // --- Weather & Precipitation ---
 #define DYNAMIC_WEATHER             // Atmospheric transitions during rain and thunderstorms
 #define RAIN_FOG_DENSITY    1.0     // [0.5 0.75 1.0 1.5 2.0] Fog thickness during rain
-#define STORM_LIGHTNING             // Branching procedural lightning flashes with terrain glow
+#define STORM_LIGHTNING             // Cinematic procedural lightning discharges (CG, CC & IC)
+#define LIGHTNING_BOLTS             // Render visible geometric fractal lightning bolts in the sky
+#define LIGHTNING_BRANCH_GEN 4      // [1 2 3 4] Stepped leader fractal branching depth (1=Trunk, 2=Primary branches, 3=Secondary twigs, 4=Full 4-tier dendritic hierarchy)
+#define LIGHTNING_ROUGHNESS 1.6     // [0.8 1.0 1.2 1.4 1.6 1.8 2.0] Channel tortuosity / roughness factor (dielectric breakdown stepped leader)
+#define LIGHTNING_INTRA_CLOUD       // 3D volumetric internal scattering & illumination in storm clouds
+#define LIGHTNING_INTENSITY 1.0     // [0.5 0.75 1.0 1.25 1.5 2.0] Brightness scale of lightning discharges
 #define DESERT_SANDSTORM            // Replaces rain with dust/sandstorm in desert/mesa biomes
 #define RAIN_STREAKS                // Enhanced translucent raindrops with motion blur and lighting
 #define WETNESS_EFFECT              // Puddle darkening and ground slickness during rainfall

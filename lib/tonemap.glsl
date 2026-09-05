@@ -32,7 +32,7 @@ vec3 applyVignette(vec3 color, vec2 uv) {
     #ifdef VIGNETTE
     vec2 coord = (uv - 0.5) * vec2(1.0, 0.85);
     float dist = dot(coord, coord);
-    float vig = smoothstep(0.8, 0.25, dist * (1.0 + VIGNETTE_STRENGTH * 2.0));
+    float vig = 1.0 - smoothstep(0.25, 0.8, dist * (1.0 + VIGNETTE_STRENGTH * 2.0));
     return color * vig;
     #else
     return color;

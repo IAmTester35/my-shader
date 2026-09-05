@@ -164,6 +164,125 @@ float voronoi2D(vec2 p) {
     return minDist;
 }
 
+// Fast 3D Worley / Cellular Noise (2x2x2 cube with jitter constraint for GPU raymarching)
+float worley3D_Fast(vec3 p) {
+    vec3 id = floor(p);
+    vec3 fd = fract(p);
+    float minDist = 2.0;
+    for (int z = 0; z <= 1; ++z) {
+        for (int y = 0; y <= 1; ++y) {
+            for (int x = 0; x <= 1; ++x) {
+                vec3 g = vec3(float(x), float(y), float(z));
+                vec3 o = hash33(id + g) * 0.75 + 0.125;
+                vec3 diff = g + o - fd;
+                minDist = min(minDist, dot(diff, diff));
+            }
+        }
+    }
+    return clamp(sqrt(minDist), 0.0, 1.0);
+}
+
+// 3D Cellular Worley Noise (3x3x3 neighborhood for high-fidelity cloud crowns)
+float worley3D(vec3 p) {
+    vec3 id = floor(p);
+    vec3 fd = fract(p);
+    float minDist = 1.0;
+    for (int z = -1; z <= 1; ++z) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int x = -1; x <= 1; ++x) {
+                vec3 g = vec3(float(x), float(y), float(z));
+                vec3 o = hash33(id + g);
+                vec3 diff = g + o - fd;
+                minDist = min(minDist, dot(diff, diff));
+            }
+        }
+    }
+    return clamp(sqrt(minDist), 0.0, 1.0);
+}
+
+// Perlin-Worley 3D synthesis: combines FBM macro density with Worley cellular erosion
+// to create the iconic billowy cauliflower shapes of Cumulus and Cumulonimbus clouds
+float perlinWorley3D(vec3 p, float cutoff) {
+    float perlin = fbm3D_Fast(p, 0.20);
+    float vNorm = saturate((perlin - 0.22) * 2.22);
+    float worley = 1.0 - worley3D(p * 2.4 + vec3(0.5, 0.2, 0.8));
+    float pw = saturate(vNorm * 0.68 + worley * 0.52 - 0.20);
+    return pw;
+}
+
+// WMO Genera Pattern: Cirrocumulus (Cc - Mây ti tích chuẩn WMO Cloud Atlas)
+// Mô phỏng chuẩn ảnh chụp thực tế: các luống sóng dập dềnh (undulatus)
+// kết hợp búp mây đối lưu Worley tơi xốp, bị xói mòn bởi nhiễu fractal băng tuyết,
+// và hòa tan mềm mại về phía chân trời không bị méo/moiré.
+float cirrocumulusRipples2D(vec2 p, float rayDirY) {
+    // 1. Chuyển hệ trục theo hướng luồng gió tầng cao
+    const float cosW = 0.95;
+    const float sinW = 0.31;
+    
+    // Gió uốn lượn phi tuyến (Turbulent wind shear domain warp)
+    vec2 warp = vec2(
+        fbm2D(p * 2.0 + vec2(1.4, 5.2)),
+        fbm2D(p * 2.0 + vec2(8.1, 2.7))
+    ) * 0.12;
+    vec2 wp = p + warp;
+    
+    float wpWind = wp.x * cosW + wp.y * sinW;
+    float wpPerp = -wp.x * sinW + wp.y * cosW;
+
+    // 2. Chống moiré / suy giảm tần số cao gần chân trời (Horizon distance anti-aliasing)
+    float nyquistFade = clamp((rayDirY - 0.08) / 0.22, 0.0, 1.0);
+
+    // 3. Sóng trọng lực khí quyển (Undulatus wave rolls)
+    float wavePhase = wpPerp * 65.0 + fbm2D(wp * 3.5) * 2.5;
+    float waveRolls = sin(wavePhase) * 0.5 + 0.5;
+    waveRolls = mix(0.5, waveRolls, nyquistFade);
+
+    // 4. Búp mây đối lưu Worley (Continuous cellular Worley billows)
+    vec2 cellUV = vec2(wpWind * 35.2, wpPerp * 32.0);
+    float minD = voronoi2D(cellUV);
+    float worleyBillow = clamp(1.0 - minD * 1.35, 0.0, 1.0);
+    worleyBillow = mix(0.4, worleyBillow, nyquistFade);
+
+    // 5. Xói mòn sợi băng fractal (Multi-octave FBM erosion)
+    float fbmCarve = fbm2D(wp * 40.0);
+    float fineIce = gradientNoise2D(wp * 90.0) * 0.18;
+    float fbmDetail = mix(0.2, fbmCarve * 0.65 + fineIce, nyquistFade);
+
+    // Tổng hợp: Búp mây tụ dọc theo các luống sóng và bị xé sợi
+    float cloudConvection = worleyBillow * 0.60 + waveRolls * 0.40;
+    float density = clamp((cloudConvection * 1.25 - fbmDetail - 0.12) / 0.32, 0.0, 1.0);
+    density = density * density * (3.0 - 2.0 * density);
+
+    // 6. Màn mây vĩ mô (Broad Stratiformis sheet)
+    float sheetNoise = fbm2D(p * 0.75 + vec2(2.1, 4.5));
+    float sheetMask = clamp((sheetNoise - 0.24) / 0.32, 0.0, 1.0);
+    sheetMask = sheetMask * sheetMask * (3.0 - 2.0 * sheetMask);
+
+    // 7. Chân trời quang đãng: mây ti tích tiêu tán dần về phía chân trời theo mẫu ảnh thực tế
+    float horizonFade = clamp((rayDirY - 0.18) / 0.25, 0.0, 1.0);
+    horizonFade = horizonFade * horizonFade * (3.0 - 2.0 * horizonFade);
+    sheetMask *= horizonFade;
+
+    return clamp(density * sheetMask * 1.6, 0.0, 1.0);
+}
+
+// WMO Genera Pattern: Cirrus (Ci - Mây ti đuôi ngựa kéo dạt theo gió tầng cao)
+float cirrusFilament2D(vec2 p, vec2 windDir) {
+    vec2 perp = vec2(-windDir.y, windDir.x);
+    vec2 shearedP = vec2(dot(p, windDir) * 0.22, dot(p, perp) * 1.85);
+    float f1 = fbm2D(shearedP * 3.0);
+    float f2 = gradientNoise2D(shearedP * 12.0 + vec2(f1 * 2.0, 0.0));
+    return saturate(f1 * 0.70 + f2 * 0.35);
+}
+
+// WMO Genera Pattern: Altocumulus (Ac - Mây trung tích đàn cừu trôi tầng trung)
+float altocumulusRolls2D(vec2 p) {
+    float v1 = 1.0 - voronoi2D(p * 3.8);
+    float v2 = 1.0 - voronoi2D(p * 7.5);
+    float wave = sin(p.x * 10.0 + p.y * 5.0 + v1 * 2.5) * 0.5 + 0.5;
+    return saturate(v1 * 0.55 + v2 * 0.25 + wave * 0.20);
+}
+
 // --- 4. MOMENTS IN GRAPHICS (CHRISTOPH PETERS) BLUE NOISE & DITHERING ---
 
 // Converts uniform [0, 1] noise into a symmetric triangular distribution on [-1, 1] (TPDF)

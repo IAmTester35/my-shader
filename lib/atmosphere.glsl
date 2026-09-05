@@ -4,6 +4,7 @@
 #include "settings.glsl"
 #include "common.glsl"
 #include "biome.glsl"
+#include "lightning.glsl"
 
 /*
  * ==============================================================================
@@ -17,14 +18,9 @@ float rayleighPhase(float cosTheta) {
     return 0.75 + 0.50 * cosTheta * cosTheta;
 }
 
-float hgPhase(float cosTheta, float g) {
-    float g2 = g * g;
-    return (1.0 / (4.0 * PI)) * ((1.0 - g2) / pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
-}
-
 // Dual-lobe Henyey-Greenstein (strong forward + subtle backscattering glory)
 float dualHgPhase(float cosTheta, float g1, float g2, float k) {
-    return mix(hgPhase(cosTheta, g1), hgPhase(cosTheta, g2), k);
+    return doubleHgPhase(cosTheta, g1, g2, k);
 }
 
 // Direct celestial light colors
@@ -48,8 +44,8 @@ vec3 getMoonColor(float moonHeight, float rain) {
     return moonLight;
 }
 
-// Sky color evaluation for any view ray in world space (with optional directional lightning azimuth)
-vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float stormAzimuth, BiomeAtmosphere biomeAtm) {
+// Sky color evaluation for any view ray in world space (Primary implementation with LightningStrike)
+vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, LightningStrike strike, BiomeAtmosphere biomeAtm) {
     float cosViewUp = dot(rayDir, upVector);
     float cosSun    = dot(rayDir, sunDir);
     float cosMoon   = dot(rayDir, moonDir);
@@ -102,16 +98,11 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     #ifdef BELT_OF_VENUS
     // Belt of Venus & Earth's shadow on the anti-solar horizon (looking away from sunset/sunrise)
     if (abs(sunHeight) < 0.22) {
-        float antiSunAzimuth = max(-cosSun, 0.0);
-        float twilightBand = smoothstep(0.0, 0.16, viewElevation) * (1.0 - smoothstep(0.12, 0.35, viewElevation));
-        float shadowBand   = (1.0 - smoothstep(0.0, 0.09, viewElevation));
-        
-        vec3 venusPink    = vec3(0.85, 0.38, 0.55); // Backscattered reddened sunlight
-        vec3 earthShadow  = vec3(0.08, 0.10, 0.22); // Dark blue-gray shadow of the Earth
-        
-        float beltStrength = pow(antiSunAzimuth, 2.2) * (1.0 - smoothstep(0.02, 0.22, abs(sunHeight)));
-        sunsetSky = mix(sunsetSky, sunsetSky + venusPink * 0.45, beltStrength * twilightBand);
-        sunsetSky = mix(sunsetSky, earthShadow, beltStrength * shadowBand * 0.65);
+        float antiSolar = max(-cosSun, 0.0);
+        float venusPink = pow(antiSolar, 4.0) * (1.0 - smoothstep(0.08, 0.32, viewElevation));
+        float earthShadow = pow(antiSolar, 6.0) * (1.0 - smoothstep(0.0, 0.08, viewElevation));
+        sunsetSky = mix(sunsetSky, vec3(0.85, 0.45, 0.52), venusPink * 0.45);
+        sunsetSky = mix(sunsetSky, vec3(0.08, 0.12, 0.26), earthShadow * 0.60);
     }
     #endif
 
@@ -121,22 +112,16 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     daySky += multiScatter * 0.35;
     #endif
 
+    // Night sky
     vec3 nightSky = mix(nightHorizon, nightZenith, pow(viewElevation, 0.7 / atmDensity));
-    nightSky += moonlightZenith * max(cosMoon, 0.0) * 0.5;
 
-    // Composite time-of-day sky
+    // Combine Day, Sunset, and Night sky layers
     vec3 skyColor = mix(nightSky, daySky, dayFactor);
-    skyColor = mix(skyColor, sunsetSky, sunsetFactor * 0.88);
+    skyColor = mix(skyColor, sunsetSky, sunsetFactor);
 
-    #ifdef MIE_SCATTERING
-    // Forward Mie scattering (aerosol sun halo)
-    if (sunHeight > -0.18) {
-        float mieGlow = hgPhase(cosSun, 0.82) * 0.11 * biomeAtm.hazeDensity;
-        vec3 mieColor = mix(vec3(1.0, 0.62, 0.22), vec3(1.0, 0.96, 0.90), clamp(sunHeight * 3.0, 0.0, 1.0));
-        skyColor += mieColor * mieGlow * clamp((sunHeight + 0.18) * 4.0, 0.0, 1.0);
-    }
-    // Nocturnal lunar Mie scattering (aerosol moon halo across the night sky)
-    if (sunHeight < 0.10 && moonHeight > -0.15) {
+    // Moon atmospheric glow (Mie lunar halo)
+    #ifdef MOON_HALO
+    if (moonHeight > -0.20 && nightFactor > 0.05) {
         float lunarMie = hgPhase(cosMoon, 0.78) * 0.06 * biomeAtm.hazeDensity;
         vec3 moonMieColor = vec3(0.65, 0.78, 1.0) * getMoonColor(moonHeight, rain);
         skyColor += moonMieColor * lunarMie * clamp((moonHeight + 0.15) * 4.0, 0.0, 1.0) * (1.0 - dayFactor);
@@ -161,19 +146,6 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
             overcast *= mix(1.0, 0.68, horizonFactor);
             skyColor = mix(skyColor, overcast, rain * 0.90);
         }
-
-        #ifdef STORM_LIGHTNING
-        if (stormLightning > 0.01) {
-            vec3 lightningColor = vec3(0.88, 0.94, 1.15) * 3.0;
-            float dirFactor = 0.85;
-            if (stormAzimuth > -50.0) {
-                vec2 strikeDir = vec2(cos(stormAzimuth), sin(stormAzimuth));
-                vec2 rayXZ = normalize(rayDir.xz + vec2(1e-5));
-                dirFactor = 0.35 + 0.65 * max(dot(rayXZ, strikeDir), 0.0);
-            }
-            skyColor = mix(skyColor, lightningColor, stormLightning * dirFactor * 0.90);
-        }
-        #endif
     }
     #endif
 
@@ -186,7 +158,40 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     }
     #endif
 
+    #ifdef STORM_LIGHTNING
+    if (strike.isTriggered && strike.intensity > 0.005) {
+        // 1. Tia sét hình học fractal sắc nét (core + sheath + branches)
+        vec3 boltRadiance = evaluateProceduralLightningBolt(rayDir, strike);
+
+        // 2. Quầng tán xạ ion hóa Mie tập trung quanh vị trí sét
+        vec3 airGlow = evaluateAtmosphericLightningGlow(rayDir, strike);
+
+        // 3. Phản quang chân trời góc nhìn trực diện (tập trung theo phương vị sét, tán xạ dịu mắt)
+        float azimMatch = max(dot(normalize(rayDir.xz + vec2(1e-4)), strike.strikeDir.xz), 0.0);
+        float horizonFlash = pow(azimMatch, 5.0) * exp(-abs(rayDir.y) * 9.0) * 0.22;
+        vec3 bounceGlow = strike.sheathColor * horizonFlash * strike.intensity;
+
+        skyColor += boltRadiance + airGlow + bounceGlow;
+    }
+    #endif
+
     return max(skyColor, vec3(0.0));
+}
+
+// 8-parameter compatibility wrapper (for legacy calls)
+vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, float stormAzimuth, BiomeAtmosphere biomeAtm) {
+    LightningStrike strike;
+    strike.isTriggered = (stormLightning > 0.005);
+    strike.intensity = stormLightning;
+    strike.returnStroke = stormLightning;
+    strike.azimuth = (stormAzimuth > -50.0) ? stormAzimuth : 0.0;
+    strike.elevation = 0.20;
+    strike.strikeDir = normalize(vec3(cos(strike.azimuth) * cos(0.20), sin(0.20), sin(strike.azimuth) * cos(0.20)));
+    strike.seed = hash11(strike.azimuth * 47.19 + 3.1);
+    strike.strikeType = LIGHTNING_TYPE_CG;
+    strike.coreColor = vec3(1.15, 1.25, 1.50) * 55.0;
+    strike.sheathColor = vec3(0.35, 0.72, 1.30);
+    return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, strike, biomeAtm);
 }
 
 // 7-parameter compatibility wrapper
@@ -194,10 +199,30 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, stormLightning, -100.0, biomeAtm);
 }
 
-// Distance fog color matching atmospheric scattering and biome
-vec3 getAtmosphericFogColor(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
+// Distance fog color matching atmospheric scattering and biome (pure diffuse fog, no bolt geometry)
+vec3 getAtmosphericFogColor(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, LightningStrike strike, BiomeAtmosphere biomeAtm) {
     vec3 horizonDir = normalize(vec3(rayDir.x, max(rayDir.y * 0.25, 0.02), rayDir.z));
-    return calculateAtmosphericSky(horizonDir, sunDir, moonDir, upVector, rain, stormLightning, biomeAtm);
+    LightningStrike fogStrike = strike;
+    fogStrike.isTriggered = false; // Never render geometric bolt into fog or cloud ambient light!
+    vec3 fogColor = calculateAtmosphericSky(horizonDir, sunDir, moonDir, upVector, rain, fogStrike, biomeAtm);
+
+    #ifdef STORM_LIGHTNING
+    if (strike.isTriggered && strike.intensity > 0.005) {
+        float fogFlash = pow(max(dot(horizonDir, strike.strikeDir) * 0.5 + 0.5, 0.0), 3.0);
+        fogColor += strike.sheathColor * (fogFlash * 0.40 + 0.10) * strike.intensity * LIGHTNING_INTENSITY;
+    }
+    #endif
+
+    return fogColor;
+}
+
+vec3 getAtmosphericFogColor(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, float stormLightning, BiomeAtmosphere biomeAtm) {
+    LightningStrike s;
+    s.isTriggered = (stormLightning > 0.005);
+    s.intensity = stormLightning;
+    s.sheathColor = vec3(0.35, 0.72, 1.30);
+    s.strikeDir = vec3(0.0, 0.20, 1.0);
+    return getAtmosphericFogColor(rayDir, sunDir, moonDir, upVector, rain, s, biomeAtm);
 }
 
 #endif // ATMOSPHERE_GLSL

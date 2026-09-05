@@ -110,7 +110,14 @@ option.CLOUD_SHADOWING=Tự Đổ Bóng Khối & Hiệu Ứng Đường Bột
 # Thời tiết
 option.DYNAMIC_WEATHER=Thời Tiết Động
 option.RAIN_FOG_DENSITY=Mật Độ Sương Mưa
-option.STORM_LIGHTNING=Sấm Sét Chớp Xung Kép/Ba
+option.STORM_LIGHTNING=Hệ Thống Sét Điện Ảnh (CG/CC/IC)
+option.LIGHTNING_BOLTS=Tia Sét Fractal Rõ Nét (Đất & Mây)
+option.LIGHTNING_BRANCH_GEN=Cấp Độ Phân Nhánh (Branch Gen)
+option.LIGHTNING_BRANCH_GEN.comment=Độ sâu fractal của cây phân nhánh: 1=Chỉ thân chính, 2=Nhánh sơ cấp, 3=Nhánh thứ cấp, 4=Đầy đủ 4 thế hệ phân nhánh tự nhiên.
+option.LIGHTNING_ROUGHNESS=Độ Gập Góc / Gồ Ghề (Tortuosity)
+option.LIGHTNING_ROUGHNESS.comment=Hệ số gập góc và dao động đánh thủng điện môi (Stepped Leader Jitter). Mức 1.6 mang lại độ chân thực vật lý cao nhất.
+option.LIGHTNING_INTRA_CLOUD=Sét Sáng Thể Tích Trong Lòng Mây
+option.LIGHTNING_INTENSITY=Cường Độ Sáng Của Sét
 option.RAIN_STREAKS=Chi Tiết Vệt Hạt Mưa
 option.WETNESS_EFFECT=Mặt Đất Ướt Nước
 

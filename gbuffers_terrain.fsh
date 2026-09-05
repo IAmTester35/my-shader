@@ -61,9 +61,15 @@ void main() {
     vec3 minAmbient = vec3(0.04, 0.045, 0.06);
 
     #ifdef STORM_LIGHTNING
-    if (stormLightning > 0.01) {
-        float upward = max(dot(normal, WORLD_UP) * 0.5 + 0.5, 0.0);
-        directLight += vec3(0.92, 0.96, 1.15) * stormLightning * upward * skyExposure * 2.4;
+    if (stormLightning > 0.005) {
+        LightningStrike strike = evaluateLightningState(rainStrength, frameTimeCounter);
+        if (strike.isTriggered && strike.intensity > 0.005) {
+            vec3 strikeLightDir = normalize(strike.strikeDir + vec3(0.0, 0.45, 0.0));
+            float NdotStrike = max(dot(normal, strikeLightDir), 0.0);
+            float upward = max(dot(normal, WORLD_UP) * 0.5 + 0.5, 0.0);
+            float strikeDiffuse = mix(upward, NdotStrike, 0.65);
+            directLight += (strike.coreColor * 0.08 + strike.sheathColor * 1.5) * strike.intensity * strikeDiffuse * skyExposure * 2.2;
+        }
     }
     #endif
 

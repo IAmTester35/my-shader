@@ -110,7 +110,14 @@ option.CLOUD_SHADOWING=Self-Shadowing & Powder Effect
 # Weather
 option.DYNAMIC_WEATHER=Dynamic Weather
 option.RAIN_FOG_DENSITY=Rain Fog Density
-option.STORM_LIGHTNING=Multi-Pulse Storm Lightning
+option.STORM_LIGHTNING=Cinematic Storm Lightning
+option.LIGHTNING_BOLTS=Visible Lightning Bolts (CG/CC)
+option.LIGHTNING_BRANCH_GEN=Branch Generations (Depth)
+option.LIGHTNING_BRANCH_GEN.comment=Controls fractal tree depth: 1=Trunk only, 2=Primary branches, 3=Secondary twigs, 4=Full 4-tier dendritic hierarchy.
+option.LIGHTNING_ROUGHNESS=Tortuosity / Roughness
+option.LIGHTNING_ROUGHNESS.comment=Controls stepped-leader tortuosity and high-frequency dielectric breakdown jitter (1.6 for maximum physical realism).
+option.LIGHTNING_INTRA_CLOUD=Volumetric Intra-Cloud Glow
+option.LIGHTNING_INTENSITY=Lightning Brightness Scale
 option.RAIN_STREAKS=Raindrop Shading
 option.WETNESS_EFFECT=Wet Surface Puddles
 

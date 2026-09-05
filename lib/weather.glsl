@@ -5,6 +5,7 @@
 #include "common.glsl"
 #include "noise.glsl"
 #include "biome.glsl"
+#include "lightning.glsl"
 
 /*
  * ==============================================================================
@@ -15,44 +16,14 @@
 
 // Procedural multi-pulse lightning flash trigger during thunderstorms
 float getStormLightningFlash(float rain, float timeSec) {
-    #ifndef STORM_LIGHTNING
-    return 0.0;
-    #endif
-
-    #ifndef DYNAMIC_WEATHER
-    return 0.0;
-    #endif
-
-    if (rain < 0.60) return 0.0;
-
-    float timer = timeSec * 0.45;
-    float cycle = floor(timer);
-    float localT = fract(timer);
-
-    float flashSeed = hash11(cycle * 43.12);
-    
-    // ~25% of cycles trigger lightning strikes
-    if (flashSeed > 0.75) {
-        float strikeStart = hash11(cycle * 19.3) * 0.6;
-        float dt = localT - strikeStart;
-
-        // Triple-pulse pattern characteristic of severe cloud-to-ground lightning
-        if (dt > 0.0 && dt < 0.28) {
-            float pulse1 = exp(-dt * 34.0);
-            float pulse2 = (dt > 0.07) ? exp(-(dt - 0.07) * 28.0) * 1.4 : 0.0;
-            float pulse3 = (dt > 0.16) ? exp(-(dt - 0.16) * 32.0) * 0.8 : 0.0;
-            return saturate(max(max(pulse1, pulse2), pulse3) * rain);
-        }
-    }
-
-    return 0.0;
+    LightningStrike s = evaluateLightningState(rain, timeSec);
+    return s.intensity;
 }
 
 // Directional azimuth (in radians [0..2PI]) of the active lightning strike
 float getStormLightningAzimuth(float timeSec) {
-    float timer = timeSec * 0.45;
-    float cycle = floor(timer);
-    return hash11(cycle * 19.3 + 7.0) * TWO_PI;
+    LightningStrike s = evaluateLightningState(1.0, timeSec);
+    return s.azimuth;
 }
 
 // Atmospheric rain / weather fog density calculation

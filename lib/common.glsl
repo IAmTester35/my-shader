@@ -48,4 +48,14 @@ vec3 getMoonDirWorld(vec3 moonPosEye, mat4 modelViewInv) {
     return normalize((modelViewInv * vec4(normalize(moonPosEye), 0.0)).xyz);
 }
 
+// Henyey-Greenstein scattering phase function
+float hgPhase(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 0.001), 1.5));
+}
+
+float doubleHgPhase(float cosTheta, float g1, float g2, float k) {
+    return mix(hgPhase(cosTheta, g1), hgPhase(cosTheta, g2), k);
+}
+
 #endif // COMMON_GLSL

@@ -47,7 +47,7 @@ void main() {
         // === SKY PIXELS ===
         // True Volumetric 3D Raymarched Clouds with smoothly blended biome adaptations
         CloudResult clouds = renderVolumetric3DClouds(rayDir, sunDir, moonDir, WORLD_UP, rainStrength, stormLightning, frameTimeCounter, biomeAtm);
-        finalColor = mix(finalColor, clouds.color.rgb, clouds.color.a);
+        finalColor = finalColor * clouds.transmittance + clouds.color.rgb;
     } else {
         // === TERRAIN & WORLD PIXELS ===
         vec3 viewPos = screenToView(texCoord, depth, gbufferProjectionInverse);
@@ -97,8 +97,8 @@ void main() {
 
                 rayDensity /= float(G_STEPS);
 
-                float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * smoothstep(1.2, 0.9, lightUV.x) *
-                                 smoothstep(-0.2, 0.1, lightUV.y) * smoothstep(1.2, 0.9, lightUV.y);
+                float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * (1.0 - smoothstep(0.9, 1.2, lightUV.x)) *
+                                 smoothstep(-0.2, 0.1, lightUV.y) * (1.0 - smoothstep(0.9, 1.2, lightUV.y));
 
                 vec3 godrayColor;
                 if (useSun) {

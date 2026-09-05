@@ -18,12 +18,12 @@
 vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, float rainStrength, BiomeAtmosphere biomeAtm) {
     if (rainStrength > 0.95 || sunHeight < -0.18) return vec4(0.0);
 
-    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 5.4;
-    vec3 sunsetColor  = vec3(1.00, 0.44, 0.07) * 4.4;
-    vec3 horizonColor = vec3(0.96, 0.15, 0.02) * 3.6;
+    vec3 noonColor    = vec3(1.00, 0.98, 0.94) * 4.2;
+    vec3 sunsetColor  = vec3(1.00, 0.46, 0.09) * 3.2;
+    vec3 horizonColor = vec3(0.96, 0.20, 0.03) * 2.6;
 
     if (biomeAtm.isArid) {
-        sunsetColor = mix(sunsetColor, vec3(1.00, 0.30, 0.03) * 4.6, biomeAtm.sandstormFactor);
+        sunsetColor = mix(sunsetColor, vec3(1.00, 0.32, 0.04) * 3.4, biomeAtm.sandstormFactor);
     }
 
     float sunsetT  = clamp(1.0 - sunHeight * 4.0, 0.0, 1.0);
@@ -31,7 +31,7 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec3 currentSunColor = mix(noonColor, sunsetColor, sunsetT);
     currentSunColor = mix(currentSunColor, horizonColor, horizonT);
 
-    // Atmospheric refraction flattening: compresses the vertical axis when sun is close to horizon
+    // Khúc xạ khí quyển nén dẹt trục thẳng đứng khi mặt trời sát chân trời
     vec2 sunCoord = localCoord;
     #ifdef SUN_ATMOSPHERIC_FLATTENING
     float flattenFactor = 1.0 + clamp((0.15 - sunHeight) * 2.2, 0.0, 0.45);
@@ -43,45 +43,46 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec3 sunEmission = vec3(0.0);
     float alpha = 0.0;
 
-    // 1. Sharp solar disc with 3-term Eddington limb darkening
+    // 1. Đĩa Mặt trời sắc nét với quy luật tối vùng rìa Eddington 3 thành phần
     if (flatDist < discRadius) {
         float r = flatDist / discRadius;
         #ifdef SUN_LIMB_DARKENING
         float mu = sqrt(max(1.0 - r * r, 0.0));
-        // Solar limb darkening with chromatic variation (cooler limb has redder wavelength)
-        float limbDarkening = 0.32 + 0.68 * pow(mu, 0.65);
-        vec3 limbTint = mix(vec3(1.0, 0.72, 0.45), vec3(1.0), pow(mu, 0.4));
+        float limbDarkening = 0.35 + 0.65 * pow(mu, 0.60);
+        vec3 limbTint = mix(vec3(1.0, 0.65, 0.35), vec3(1.0), pow(mu, 0.35));
         #else
         float limbDarkening = 1.0;
         vec3 limbTint = vec3(1.0);
         #endif
-        float edgeAA = smoothstep(1.0, 0.94, r);
+        float edgeAA = 1.0 - smoothstep(0.94, 1.0, r);
         sunEmission += currentSunColor * limbDarkening * limbTint * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
-    // 2. Solar Corona & Multi-Spectral Chromatic Plasma Glow
+    // 2. Quầng plasma corona bám sát rìa quang cầu (tight physical plasma envelope)
+    // Suy giảm mượt mà theo hàm mũ bắt đầu ngay từ mép đĩa ra ngoài, triệt tiêu trước biên quad
     if (SUN_CORONA_INTENSITY > 0.001) {
-        float coronaGlow = exp(-flatDist * 3.8) * SUN_CORONA_INTENSITY * 0.92;
+        float rRel = max(flatDist - discRadius, 0.0) / discRadius;
+        float coronaGlow = exp(-rRel * 6.8) * 0.36 * SUN_CORONA_INTENSITY;
+
         #ifdef SUN_CHROMATIC_CORONA
-        // Plasma corona fringe with subtle cyan-to-gold chromatic dispersion
-        vec3 coronaColor = mix(vec3(1.0, 0.55, 0.15), currentSunColor, exp(-flatDist * 2.0));
-        coronaColor = mix(coronaColor, vec3(1.0, 0.88, 0.65), exp(-flatDist * 6.5));
+        // Tán sắc plasma quang sai nhẹ nhàng chuyển từ cam vàng sang ánh mặt trời
+        vec3 coronaColor = mix(vec3(1.0, 0.52, 0.15), currentSunColor, exp(-rRel * 3.5));
         #else
         vec3 coronaColor = currentSunColor;
         #endif
         sunEmission += coronaColor * coronaGlow;
-        alpha = max(alpha, clamp(coronaGlow, 0.0, 1.0));
+        alpha = max(alpha, clamp(coronaGlow * 1.5, 0.0, 1.0));
     }
 
-    // 3. Wide solar glare halo
+    // 3. Hào quang tán xạ dịu êm (không dùng hàm bậc 2 gây viền tròn cắt cụt quad)
     #ifdef SUN_GLARE
-    float glare = 0.24 / (1.0 + distToCenter * distToCenter * 5.5) * biomeAtm.hazeDensity;
+    float glare = exp(-flatDist * 3.6) * 0.10 * biomeAtm.hazeDensity;
     sunEmission += currentSunColor * glare;
-    alpha = max(alpha, clamp(glare, 0.0, 1.0));
+    alpha = max(alpha, clamp(glare * 1.5, 0.0, 1.0));
     #endif
 
-    // 4. Solar diffraction starburst spikes (6-point anamorphic lens diffraction)
+    // 4. Tia lóe nhiễu xạ 6 cánh (diffraction spikes anamorphic)
     #ifdef SOLAR_DIFFRACTION_SPIKES
     float spAngle1 = 0.0;
     float spAngle2 = 1.047197; // 60 deg
@@ -91,18 +92,18 @@ vec4 renderSunBillboard(vec2 localCoord, float distToCenter, float sunHeight, fl
     vec2 p2 = vec2(localCoord.x * cos(spAngle2) - localCoord.y * sin(spAngle2), localCoord.x * sin(spAngle2) + localCoord.y * cos(spAngle2));
     vec2 p3 = vec2(localCoord.x * cos(spAngle3) - localCoord.y * sin(spAngle3), localCoord.x * sin(spAngle3) + localCoord.y * cos(spAngle3));
 
-    float s1 = exp(-abs(p1.y) * 16.0) / (abs(p1.x) * 2.2 + 1.0);
-    float s2 = exp(-abs(p2.y) * 16.0) / (abs(p2.x) * 2.2 + 1.0);
-    float s3 = exp(-abs(p3.y) * 16.0) / (abs(p3.x) * 2.2 + 1.0);
+    float s1 = exp(-abs(p1.y) * 16.0) / (abs(p1.x) * 2.5 + 1.0);
+    float s2 = exp(-abs(p2.y) * 16.0) / (abs(p2.x) * 2.5 + 1.0);
+    float s3 = exp(-abs(p3.y) * 16.0) / (abs(p3.x) * 2.5 + 1.0);
 
-    float spike = (s1 + s2 + s3) * exp(-distToCenter * 2.6) * 0.38;
+    float spike = (s1 + s2 + s3) * exp(-flatDist * 3.2) * 0.20;
     vec3 spikeColor = mix(vec3(1.0, 0.85, 0.65), currentSunColor, 0.5);
     sunEmission += spikeColor * spike;
-    alpha = max(alpha, clamp(spike, 0.0, 1.0));
+    alpha = max(alpha, clamp(spike * 1.5, 0.0, 1.0));
     #endif
 
-    // Smooth circular quad boundary falloff: guarantees 0 at quad edges, eliminating square cut-off boxes
-    float quadFade = smoothstep(1.0, 0.70, distToCenter);
+    // Suy giảm mượt ở biên ngoài quad, hoàn toàn không để lại vết cắt hay ranh giới tròn
+    float quadFade = 1.0 - smoothstep(0.65, 1.0, distToCenter);
     sunEmission *= quadFade;
     alpha *= quadFade;
 
@@ -116,31 +117,33 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
 
     float nightFactor = clamp(-sunHeight * 8.0, 0.0, 1.0);
     float discRadius = 0.48 * MOON_SIZE;
-    vec3 moonBaseColor = vec3(0.92, 0.95, 1.0);
+    // Tông màu bạc ánh trăng tự nhiên dịu mát, không bị gắt xanh
+    vec3 moonBaseColor = vec3(0.92, 0.94, 0.97);
     vec3 moonEmission = vec3(0.0);
     float alpha = 0.0;
 
     if (distToCenter < discRadius) {
         float r = distToCenter / discRadius;
-        float edgeAA = smoothstep(1.0, 0.93, r);
+        float edgeAA = 1.0 - smoothstep(0.93, 1.0, r);
 
         float normalZ = sqrt(max(1.0 - r * r, 0.0));
         vec3 sphereNormal = vec3(localCoord / discRadius, normalZ);
 
-        // Detailed lunar maria & crater ejecta rays
+        // Chi tiết bề mặt biển bazan (maria) và các tia bắn miệng hố
         #ifdef MOON_SURFACE_DETAIL
         vec2 surfaceUV = (localCoord / discRadius) * 1.5 + vec2(1.2, 0.8);
         float maria = fbm2D_Detailed(surfaceUV * 2.4);
         float craterRays = voronoi2D(surfaceUV * 4.2);
         float microCraters = voronoi2D(surfaceUV * 9.5);
-        float albedo = mix(0.48, 1.10, smoothstep(0.35, 0.68, maria));
-        albedo += (1.0 - smoothstep(0.0, 0.13, craterRays)) * 0.32;
-        albedo += (1.0 - smoothstep(0.0, 0.08, microCraters)) * 0.16;
+        // Cân đối tương phản bề mặt để hiển thị rõ chi tiết mà không bị cháy sáng
+        float albedo = mix(0.55, 1.05, smoothstep(0.35, 0.68, maria));
+        albedo += (1.0 - smoothstep(0.0, 0.15, craterRays)) * 0.22;
+        albedo += (1.0 - smoothstep(0.0, 0.10, microCraters)) * 0.12;
         #else
         float albedo = 1.0;
         #endif
 
-        // 8-Phase lunar cycle with physically oriented terminator pointing toward the Sun
+        // Chu kỳ 8 pha mặt trăng với hướng ánh sáng vật lý chính xác theo mặt trời
         #ifdef MOON_PHASES
         vec3 moonRight = normalize(cross(moonDir, upVector));
         vec3 moonUp    = cross(moonRight, moonDir);
@@ -154,47 +157,56 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
         vec3 phaseLightDir = normalize(vec3(sunTangentDir * lightTransverse, lightZ));
 
         #ifdef MOON_CRATER_RELIEF
-        // Procedural 3D normal disturbance for crater rim relief along the terminator line
-        vec2 craterGrad = vec2(
-            voronoi2D((surfaceUV + vec2(0.02, 0.0)) * 6.0) - voronoi2D((surfaceUV - vec2(0.02, 0.0)) * 6.0),
-            voronoi2D((surfaceUV + vec2(0.0, 0.02)) * 6.0) - voronoi2D((surfaceUV - vec2(0.0, 0.02)) * 6.0)
-        );
-        vec3 perturbedNormal = normalize(sphereNormal + vec3(craterGrad * 0.35, 0.0));
+        // Đạo hàm vi phân gradient FBM liên tục C2 để tránh gãy khúc / răng cưa so với voronoi
+        vec2 eps = vec2(0.04, 0.0);
+        float hL = fbm2D(surfaceUV * 5.0 - eps.xy);
+        float hR = fbm2D(surfaceUV * 5.0 + eps.xy);
+        float hD = fbm2D(surfaceUV * 5.0 - eps.yx);
+        float hU = fbm2D(surfaceUV * 5.0 + eps.yx);
+        vec2 smoothGrad = vec2(hR - hL, hU - hD) * 1.8;
+
+        // Chỉ tạo gồ ghề vi mô nhẹ dọc đường phân giới terminator
+        float termProximity = 1.0 - smoothstep(0.0, 0.35, abs(dot(sphereNormal, phaseLightDir)));
+        vec3 perturbedNormal = normalize(sphereNormal + vec3(smoothGrad * 0.18 * termProximity, 0.0));
         #else
         vec3 perturbedNormal = sphereNormal;
         #endif
 
+        // Dải chuyển tiếp sáng tối mượt mà (smooth physical terminator falloff) loại bỏ răng cưa
         float NdotL = dot(perturbedNormal, phaseLightDir);
-        float illumination = smoothstep(-0.06, 0.06, NdotL);
+        float illumination = smoothstep(-0.14, 0.14, NdotL);
 
         #ifdef MOON_EARTHSHINE
-        illumination += 0.06 * (1.0 - illumination);
+        // Ánh đất dịu nhẹ phản chiếu phần tối của mặt trăng
+        illumination += 0.045 * (1.0 - illumination);
         #endif
         #else
         float illumination = 1.0;
         #endif
 
-        moonEmission += moonBaseColor * albedo * illumination * 2.7 * edgeAA;
+        // Cân chỉnh cường độ phát xạ vừa vặn (1.15) để giữ trọn vẹn chi tiết khi qua tonemapping ACES
+        moonEmission += moonBaseColor * albedo * illumination * 1.15 * edgeAA;
         alpha = max(alpha, edgeAA);
     }
 
-    // Lunar atmospheric halo / ice crystal ring
+    // Quầng sáng khí quyển & vòng tinh thể băng 22 độ (Lunar Halo)
     #ifdef MOON_HALO
-    float haloGlow = exp(-distToCenter * 3.0) * 0.32 * MOON_HALO_INTENSITY;
-    haloGlow *= mix(1.0, 1.8, biomeAtm.auroraStrength / 1.8);
+    // Hào quang khuếch tán mềm mại, dịu êm
+    float haloGlow = exp(-distToCenter * 2.6) * 0.06 * MOON_HALO_INTENSITY;
+    haloGlow *= mix(1.0, 1.4, biomeAtm.auroraStrength / 1.8);
 
-    // 22-degree hexagonal ice crystal halo ring within billboard quad
+    // Vành hào quang 22 độ siêu mờ ảo, phân bố Gauss rộng không còn đường viền sắc
     float ringR = abs(distToCenter - 0.72);
-    float ringIntensity = (biomeAtm.isCold ? 0.38 : 0.14) * MOON_HALO_INTENSITY;
-    float haloRing = exp(-ringR * ringR * 120.0) * ringIntensity;
+    float ringIntensity = (biomeAtm.isCold ? 0.06 : 0.012) * MOON_HALO_INTENSITY;
+    float haloRing = exp(-ringR * ringR * 26.0) * ringIntensity;
 
-    vec3 haloColor = vec3(0.58, 0.75, 1.0);
+    vec3 haloColor = vec3(0.68, 0.78, 0.95);
     moonEmission += haloColor * (haloGlow + haloRing);
-    alpha = max(alpha, clamp((haloGlow + haloRing) * 1.5, 0.0, 1.0));
+    alpha = max(alpha, clamp((haloGlow + haloRing) * 1.0, 0.0, 1.0));
     #endif
 
-    // Smooth circular quad boundary falloff
-    float quadFade = smoothstep(1.0, 0.70, distToCenter);
+    // Suy giảm mượt ở biên ngoài billboard quad
+    float quadFade = 1.0 - smoothstep(0.70, 1.0, distToCenter);
     moonEmission *= quadFade;
     alpha *= quadFade;
 
@@ -574,7 +586,7 @@ vec3 renderStarsAndMilkyWay(vec3 rayDir, float sunHeight, float rain, float time
     float auroraStrength = biomeAtm.auroraStrength * AURORA_INTENSITY;
     if (auroraStrength > 0.01 && sphereDir.y > 0.03 && sphereDir.y < 0.65) {
         // Continuous smooth northward factor - no abrupt cutoffs
-        float northFactor = smoothstep(0.15, -0.45, sphereDir.z);
+        float northFactor = 1.0 - smoothstep(-0.45, 0.15, sphereDir.z);
         if (northFactor > 0.001) {
             float heightFactor = smoothstep(0.03, 0.16, sphereDir.y) * (1.0 - smoothstep(0.32, 0.60, sphereDir.y));
 
