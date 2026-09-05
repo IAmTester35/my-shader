@@ -47,9 +47,7 @@ float lcgRandom(inout float state) {
 }
 
 float normAngle(float a) {
-    while (a > PI) a -= 2.0 * PI;
-    while (a < -PI) a += 2.0 * PI;
-    return a;
+    return a - TWO_PI * floor((a + PI) / TWO_PI);
 }
 
 float distToSegment2D(vec2 p, vec2 a, vec2 b) {
@@ -268,7 +266,8 @@ vec3 evaluateProceduralLightningBolt(vec3 rayDir, LightningStrike s) {
     if (!s.isTriggered || s.intensity < 0.005) return vec3(0.0);
 
     // Orthonormal basis centered on strike direction
-    vec3 strikeRight = normalize(cross(WORLD_UP, s.strikeDir));
+    vec3 strikeUpRef = abs(dot(WORLD_UP, s.strikeDir)) > 0.99 ? vec3(0.0, 0.0, 1.0) : WORLD_UP;
+    vec3 strikeRight = normalize(cross(strikeUpRef, s.strikeDir));
     vec3 strikeUp    = cross(s.strikeDir, strikeRight);
 
     float cosAngle = dot(rayDir, s.strikeDir);

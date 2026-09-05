@@ -40,8 +40,10 @@ vec3 getBlackbodyFlameColor(float t) {
     vec3 flame = mix(colEdge * 0.7, colBody, body);
     flame = mix(flame, colCore, core);
 
+    #ifdef FIRE_BLACKBODY_CORE
     // Extra HDR radiance for the hottest reaction zone to bloom naturally through ACES
     flame += colCore * (core * core * 1.8);
+    #endif
 
     return flame * edge;
 }
@@ -83,6 +85,7 @@ float calculateFlameTongueDynamics(vec2 uv, float timeSec, float seed) {
     float upwardSpeed = 4.2;
     float t = timeSec * upwardSpeed;
 
+    #ifdef FIRE_TURBULENCE
     // Upward coordinate scaling (stretched along thermal plume)
     vec2 p = vec2(uv.x * 3.2 + seed * 17.3, uv.y * 2.4 - t);
 
@@ -99,6 +102,9 @@ float calculateFlameTongueDynamics(vec2 uv, float timeSec, float seed) {
 
     // Combine multi-octave turbulence
     float turbulence = n1 * 0.55 + n2 * 0.30 + n3 * 0.15;
+    #else
+    float turbulence = 0.5;
+    #endif
 
     // Conical flame envelope: Thicker at base (v=0), tapering to sharp tip (v=1)
     float horizontalDist = abs(uv.x - 0.5) * 2.0;

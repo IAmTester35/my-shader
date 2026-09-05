@@ -130,8 +130,8 @@ float sampleCloudDensity3D(vec3 worldPos, float relHeight, int genus, float rain
     }
 
     // 4. Perlin-Worley 3D Synthesis: creates natural convective cloud clumps
-    float baseFbm = perlinWorley3D(p, 0.20);
     float threshold = 1.0 - coverage;
+    float baseFbm = perlinWorley3D(p, threshold - 0.05);
     if (baseFbm < threshold - 0.05) return 0.0;
 
     float density = saturate((baseFbm - threshold) / max(coverage, 0.10));
@@ -139,7 +139,7 @@ float sampleCloudDensity3D(vec3 worldPos, float relHeight, int genus, float rain
 
     // 5. High-frequency cellular erosion: billowy cauliflower edges
     if (density > 0.02) {
-        float detailWorley = 1.0 - worley3D(p * 3.5 + vec3(relHeight * 1.5, 0.0, relHeight * 0.8));
+        float detailWorley = 1.0 - worley3D_Fast(p * 3.5 + vec3(relHeight * 1.5, 0.0, relHeight * 0.8));
         density = saturate(density - detailWorley * 0.22);
     }
 
@@ -227,6 +227,7 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
     float jitter = getRaymarchJitter(gl_FragCoord.xy, timeSec);
     vec3 mainLightDir = (sunHeight > -0.05) ? sunDir : moonDir;
 
+    #ifdef VOLUMETRIC_3D_CLOUDS
     // Primary Volumetric Raymarch Loop (Tier 1: Low, Mid & Vertical Development)
     for (int i = 0; i < STEPS; ++i) {
         if (transmittance < 0.015) break; // Early ray termination
@@ -296,6 +297,7 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
             transmittance   *= stepTransmittance;
         }
     }
+    #endif
 
     // =========================================================================
     // Tier 2: High-Altitude Ice Crystal Genera (Cirrus, Cirrocumulus, Cirrostratus)
@@ -331,7 +333,7 @@ CloudResult renderVolumetric3DClouds(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec
             cirrusD = cirrusFilament2D(cirrusP * 2.2, windDir) * 0.50 * CLOUD_COVERAGE;
         }
 
-        cirrusD *= (1.0 - rain * 1.4);
+        cirrusD *= clamp(1.0 - rain * 1.4, 0.0, 1.0);
 
         if (cirrusD > 0.01) {
             vec3 cirrusLight = cirrusSunLight * phaseSun * 0.95 + cirrusMoonLight * phaseMoon * 0.70 + (L_zenith * 0.50 + L_horizon * 0.30);

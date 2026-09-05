@@ -53,7 +53,8 @@ vec2 grad2(vec2 p) {
 // High-performance 3D Unit Gradient Generator (Trigonometry-free for GPU efficiency)
 vec3 grad3(vec3 p) {
     vec3 h = hash33(p) * 2.0 - 1.0;
-    return normalize(h);
+    float l = length(h);
+    return l > 1e-4 ? h / l : vec3(0.0, 1.0, 0.0);
 }
 
 // --- 2. C2-CONTINUOUS GRADIENT NOISE (PERLIN / QUINTIC HERMITE) ---
@@ -203,9 +204,9 @@ float worley3D(vec3 p) {
 // Perlin-Worley 3D synthesis: combines FBM macro density with Worley cellular erosion
 // to create the iconic billowy cauliflower shapes of Cumulus and Cumulonimbus clouds
 float perlinWorley3D(vec3 p, float cutoff) {
-    float perlin = fbm3D_Fast(p, 0.20);
+    float perlin = fbm3D_Fast(p, cutoff);
     float vNorm = saturate((perlin - 0.22) * 2.22);
-    float worley = 1.0 - worley3D(p * 2.4 + vec3(0.5, 0.2, 0.8));
+    float worley = 1.0 - worley3D_Fast(p * 2.4 + vec3(0.5, 0.2, 0.8));
     float pw = saturate(vNorm * 0.68 + worley * 0.52 - 0.20);
     return pw;
 }

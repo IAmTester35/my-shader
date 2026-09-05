@@ -27,25 +27,29 @@ vec3 saturate(vec3 x) {
 vec3 screenToView(vec2 screenCoord, float depth, mat4 projInv) {
     vec4 ndc = vec4(screenCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 viewPos = projInv * ndc;
-    return viewPos.xyz / viewPos.w;
+    float safeW = abs(viewPos.w) > 1e-6 ? viewPos.w : (viewPos.w >= 0.0 ? 1e-6 : -1e-6);
+    return viewPos.xyz / safeW;
 }
 
 // Screen UV to normalized world ray direction
 vec3 getScreenRayDir(vec2 uv, mat4 projInv, mat4 modelViewInv) {
     vec4 ndc = vec4(uv * 2.0 - 1.0, 1.0, 1.0);
     vec4 viewPos = projInv * ndc;
-    vec3 viewDir = normalize(viewPos.xyz / viewPos.w);
+    float safeW = abs(viewPos.w) > 1e-6 ? viewPos.w : (viewPos.w >= 0.0 ? 1e-6 : -1e-6);
+    vec3 viewDir = normalize(viewPos.xyz / safeW);
     return normalize((modelViewInv * vec4(viewDir, 0.0)).xyz);
 }
 
 // Calculate normalized sun and moon vectors in world space
 // OptiFine sunPosition is given in eye/view space
 vec3 getSunDirWorld(vec3 sunPosEye, mat4 modelViewInv) {
-    return normalize((modelViewInv * vec4(normalize(sunPosEye), 0.0)).xyz);
+    vec3 eyeNorm = length(sunPosEye) > 1e-4 ? normalize(sunPosEye) : vec3(0.0, 1.0, 0.0);
+    return normalize((modelViewInv * vec4(eyeNorm, 0.0)).xyz);
 }
 
 vec3 getMoonDirWorld(vec3 moonPosEye, mat4 modelViewInv) {
-    return normalize((modelViewInv * vec4(normalize(moonPosEye), 0.0)).xyz);
+    vec3 eyeNorm = length(moonPosEye) > 1e-4 ? normalize(moonPosEye) : vec3(0.0, -1.0, 0.0);
+    return normalize((modelViewInv * vec4(eyeNorm, 0.0)).xyz);
 }
 
 // Henyey-Greenstein scattering phase function

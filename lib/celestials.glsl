@@ -140,7 +140,8 @@ vec4 renderMoonBillboard(vec2 localCoord, float distToCenter, vec3 sunDir, vec3 
 
         // Chu kỳ 8 pha mặt trăng với hướng ánh sáng vật lý chính xác theo mặt trời
         #ifdef MOON_PHASES
-        vec3 moonRight = normalize(cross(moonDir, upVector));
+        vec3 safeUp = abs(dot(moonDir, upVector)) > 0.99 ? vec3(0.0, 0.0, 1.0) : upVector;
+        vec3 moonRight = normalize(cross(moonDir, safeUp));
         vec3 moonUp    = cross(moonRight, moonDir);
         float sunProjX = dot(sunDir, moonRight);
         float sunProjY = dot(sunDir, moonUp);

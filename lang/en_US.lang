@@ -116,10 +116,27 @@ value.VOLUMETRIC_CLOUD_STEPS.32=Cinematic (32 Steps)
 option.CLOUD_LAYERS=Cloud Layers
 value.CLOUD_LAYERS.1=Cumulus Deck
 value.CLOUD_LAYERS.2=Cumulus + Cirrus
+option.CLOUD_WMO_GENUS=Cloud Genus (WMO Atlas)
+option.CLOUD_WMO_GENUS.comment=Select specific cloud type according to the World Meteorological Organization 10 Genera standard. 0: Auto adapts to weather and biomes.
+value.CLOUD_WMO_GENUS.0=Auto (Biome & Weather)
+value.CLOUD_WMO_GENUS.1=Cirrus (Ci)
+value.CLOUD_WMO_GENUS.2=Cirrocumulus (Cc)
+value.CLOUD_WMO_GENUS.3=Cirrostratus (Cs - 22° Halo)
+value.CLOUD_WMO_GENUS.4=Altocumulus (Ac)
+value.CLOUD_WMO_GENUS.5=Altostratus (As)
+value.CLOUD_WMO_GENUS.6=Stratocumulus (Sc)
+value.CLOUD_WMO_GENUS.7=Stratus (St)
+value.CLOUD_WMO_GENUS.8=Nimbostratus (Ns)
+value.CLOUD_WMO_GENUS.9=Cumulus (Cu)
+value.CLOUD_WMO_GENUS.10=Cumulonimbus (Cb)
+option.CLOUD_COVERAGE=Cloud Coverage
+option.CLOUD_COVERAGE.comment=Multiplier for overall sky cloud coverage factor across all genera.
 option.CLOUD_SPEED=Wind Speed
 option.CLOUD_DENSITY=Cloud Density
 option.CLOUD_SILVER_LINING=Silver Lining
 option.CLOUD_SHADOWING=Self-Shadowing & Powder Effect
+option.CLOUD_ICE_HALO=22° Cirrostratus Ice Halo
+option.CLOUD_ICE_HALO.comment=Optical 22° solar/lunar halo caused by hexagonal ice prism refraction in high cirrostratus clouds.
 
 # Weather
 option.DYNAMIC_WEATHER=Dynamic Weather

@@ -22,7 +22,7 @@ void main() {
 
     #ifdef CINEMATIC_SCREEN_FIRE
     if (isScreenFire) {
-        vec2 screenUV = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
+        vec2 screenUV = gl_FragCoord.xy / vec2(max(viewWidth, 1.0), max(viewHeight, 1.0));
         vec4 vignette = renderScreenFireVignette(screenUV, frameTimeCounter);
         if (vignette.a < 0.01) discard;
         gl_FragColor = vignette;

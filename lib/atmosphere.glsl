@@ -100,11 +100,11 @@ void getAtmosphericOpticalDepths(vec3 p, vec3 lightDir, out float optR, out floa
         float backMassR  = chapmanAirMass(xR, -cosZenith);
         float backMassM  = chapmanAirMass(xM, -cosZenith);
 
-        optR = 2.0 * tauTanR * horizMassR - tauZenithR * backMassR;
-        optM = 2.0 * tauTanM * horizMassM - tauZenithM * backMassM;
+        optR = max(2.0 * tauTanR * horizMassR - tauZenithR * backMassR, 0.0);
+        optM = max(2.0 * tauTanM * horizMassM - tauZenithM * backMassM, 0.0);
 
         float airMassOzone = 1.0 / sqrt(cosZenith * cosZenith + 2.0 * (ATM_OZONE_CENTER / ATM_PLANET_RADIUS));
-        optO = 2.0 * ATM_OZONE_THICKNESS * (1.0 / sqrt(2.0 * (ATM_OZONE_CENTER / ATM_PLANET_RADIUS))) - ATM_OZONE_THICKNESS * airMassOzone;
+        optO = max(2.0 * ATM_OZONE_THICKNESS * (1.0 / sqrt(2.0 * (ATM_OZONE_CENTER / ATM_PLANET_RADIUS))) - ATM_OZONE_THICKNESS * airMassOzone, 0.0);
     }
 }
 
@@ -247,28 +247,45 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
         vec3 tView = exp(-optView);
 
         // Sunlight single scattering
-        vec3 tSunSample = getAtmosphericTransmittance(pSample, sunDir, betaR, betaM_ext, betaO);
-        vec3 sSun = (tSunSample * sunL0) * (betaR * rR * phaseRSun + betaM_scat * rM * phaseMSun);
+        vec3 sSun = vec3(0.0);
+        if (sunElev > -0.16) {
+            vec3 tSunSample = getAtmosphericTransmittance(pSample, sunDir, betaR, betaM_ext, betaO);
+            sSun = (tSunSample * sunL0) * (betaR * rR * phaseRSun + betaM_scat * rM * phaseMSun);
 
-        // Stratospheric twilight illumination when sun is just below horizon (Blue Hour)
-        if (sunElev < 0.02 && sunElev > -0.18 && hSample > 10.0) {
-            float straElev = sunElev + (hSample / ATM_PLANET_RADIUS);
-            if (straElev > -0.04) {
-                float straFactor = smoothstep(-0.18, 0.01, sunElev) * exp(-(hSample - 25.0)*(hSample - 25.0) / 130.0);
-                vec3 straCol = vec3(0.18, 0.34, 0.95) * 2.2 * (1.0 - smoothstep(0.0, 0.09, abs(sunElev + 0.04)));
-                sSun += straCol * (betaR * rR * 1.6 + betaO * rO * 2.8) * straFactor;
+            // Stratospheric twilight illumination when sun is just below horizon (Blue Hour)
+            if (sunElev < 0.02 && sunElev > -0.18 && hSample > 10.0) {
+                float straElev = sunElev + (hSample / ATM_PLANET_RADIUS);
+                if (straElev > -0.04) {
+                    float straFactor = smoothstep(-0.18, 0.01, sunElev) * exp(-(hSample - 25.0)*(hSample - 25.0) / 130.0);
+                    vec3 straCol = vec3(0.18, 0.34, 0.95) * 2.2 * (1.0 - smoothstep(0.0, 0.09, abs(sunElev + 0.04)));
+                    sSun += straCol * (betaR * rR * 1.6 + betaO * rO * 2.8) * straFactor;
+                }
             }
         }
 
         // Moonlight single scattering
-        vec3 tMoonSample = getAtmosphericTransmittance(pSample, moonDir, betaR, betaM_ext, betaO);
-        vec3 sMoon = (tMoonSample * moonL0) * (betaR * rR * phaseRMoon + betaM_scat * rM * phaseMMoon);
+        vec3 sMoon = vec3(0.0);
+        if (sunElev < 0.06) {
+            vec3 tMoonSample = getAtmosphericTransmittance(pSample, moonDir, betaR, betaM_ext, betaO);
+            sMoon = (tMoonSample * moonL0) * (betaR * rR * phaseRMoon + betaM_scat * rM * phaseMMoon);
+        }
 
         // Multiple scattering ambient
         vec3 sMS = multiScatterAmbient * (betaR * rR * 0.20 + betaM_scat * rM * 0.08);
 
         inScatter += (sSun + sMoon + sMS) * tView * segLen;
     }
+
+    #ifdef BELT_OF_VENUS
+    // Belt of Venus: anti-solar twilight arch and Earth shadow projection
+    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > 0.005) {
+        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.5);
+        float archHeight = smoothstep(0.01, 0.08, rayDir.y) * (1.0 - smoothstep(0.12, 0.30, rayDir.y));
+        float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
+        vec3 pinkArch = vec3(0.88, 0.36, 0.50) * (archHeight * antiSolarFactor * twilightStrength * 0.40);
+        inScatter += pinkArch * exp(-optView.r * 0.4);
+    }
+    #endif
 
     #ifdef SKY_GROUND_FOG
     // Ground bounce if looking below horizon
@@ -343,18 +360,136 @@ vec3 calculateAtmosphericSky(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVect
     return calculateAtmosphericSky(rayDir, sunDir, moonDir, upVector, rain, stormLightning, -100.0, biomeAtm);
 }
 
+// Fast 4-step numerical integration for diffuse ambient and distance fog
+vec3 getAtmosphericSkyFast(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, BiomeAtmosphere biomeAtm) {
+    float biomeHaze = biomeAtm.hazeDensity;
+    vec3 betaR     = ATM_BETA_RAYLEIGH * (RAYLEIGH_SCALE * ATMOSPHERE_DENSITY);
+    vec3 betaM_scat= ATM_BETA_MIE_SCAT * (MIE_TURBIDITY * ATMOSPHERE_DENSITY * biomeHaze);
+    vec3 betaM_ext = ATM_BETA_MIE_EXT  * (MIE_TURBIDITY * ATMOSPHERE_DENSITY * biomeHaze);
+    vec3 betaO     = ATM_BETA_OZONE    * (OZONE_SCALE * ATMOSPHERE_DENSITY);
+
+    #ifndef RAYLEIGH_SCATTERING
+    betaR = vec3(0.0);
+    #endif
+    #ifndef MIE_SCATTERING
+    betaM_scat = vec3(0.0);
+    betaM_ext = vec3(0.0);
+    #endif
+    #ifndef OZONE_ABSORPTION
+    betaO = vec3(0.0);
+    #endif
+
+    vec3 p = vec3(0.0, ATM_PLANET_RADIUS + 0.5, 0.0);
+
+    float b = 2.0 * dot(rayDir, p);
+    float c_top = dot(p, p) - (ATM_TOP_RADIUS * ATM_TOP_RADIUS);
+    float d_top = max(b * b - 4.0 * c_top, 0.0);
+    float tMax = (-b + sqrt(d_top)) * 0.5;
+
+    float cosThetaSun  = dot(rayDir, sunDir);
+    float cosThetaMoon = dot(rayDir, moonDir);
+    float sunElev      = dot(sunDir, upVector);
+
+    float phaseRSun  = rayleighPhase(cosThetaSun);
+    float phaseMSun  = atmosphericMiePhase(cosThetaSun, 0.78);
+    float phaseRMoon = rayleighPhase(cosThetaMoon);
+    float phaseMMoon = atmosphericMiePhase(cosThetaMoon, 0.78);
+
+    vec3 sunTransObs  = getAtmosphericTransmittance(p, sunDir, betaR, betaM_ext, betaO);
+    vec3 sunL0  = ATM_SOLAR_IRRADIANCE * (1.0 - rain * 0.85);
+    vec3 moonL0 = ATM_SOLAR_IRRADIANCE * 0.00035 * (1.0 - rain * 0.85);
+
+    #ifdef SKY_MULTI_SCATTERING
+    vec3 twilightGlow = vec3(0.045, 0.085, 0.26) * (1.0 - smoothstep(-0.15, 0.04, abs(sunElev + 0.04)));
+    vec3 multiScatterAmbient = (sunL0 * sunTransObs * max(sunElev, 0.0) + twilightGlow + vec3(0.005, 0.009, 0.024)) * 0.28 * MULTI_SCATTER_SCALE;
+    #else
+    vec3 multiScatterAmbient = vec3(0.005, 0.009, 0.024);
+    #endif
+
+    const int FAST_STEPS = 4;
+    vec3 optView = vec3(0.0);
+    vec3 inScatter = vec3(0.0);
+
+    for (int i = 0; i < FAST_STEPS; ++i) {
+        float fracA = float(i) / float(FAST_STEPS);
+        float fracB = float(i + 1) / float(FAST_STEPS);
+        float distA = tMax * pow(fracA, 1.25);
+        float distB = tMax * pow(fracB, 1.25);
+        float segLen = distB - distA;
+        float midDist = (distA + distB) * 0.5;
+
+        vec3 pSample = p + rayDir * midDist;
+        float hSample = length(pSample) - ATM_PLANET_RADIUS;
+        float rR = exp(-max(hSample, 0.0) / ATM_SCALE_RAYLEIGH);
+        float rM = exp(-max(hSample, 0.0) / ATM_SCALE_MIE);
+        float rO = max(0.0, 1.0 - abs(hSample - ATM_OZONE_CENTER) / ATM_OZONE_THICKNESS);
+
+        vec3 optStep = (betaR * rR + betaM_ext * rM + betaO * rO) * segLen;
+        optView += optStep;
+        vec3 tView = exp(-optView);
+
+        vec3 sSun = vec3(0.0);
+        if (sunElev > -0.16) {
+            vec3 tSunSample = getAtmosphericTransmittance(pSample, sunDir, betaR, betaM_ext, betaO);
+            sSun = (tSunSample * sunL0) * (betaR * rR * phaseRSun + betaM_scat * rM * phaseMSun);
+        }
+
+        vec3 sMoon = vec3(0.0);
+        if (sunElev < 0.06) {
+            vec3 tMoonSample = getAtmosphericTransmittance(pSample, moonDir, betaR, betaM_ext, betaO);
+            sMoon = (tMoonSample * moonL0) * (betaR * rR * phaseRMoon + betaM_scat * rM * phaseMMoon);
+        }
+
+        vec3 sMS = multiScatterAmbient * (betaR * rR * 0.20 + betaM_scat * rM * 0.08);
+        inScatter += (sSun + sMoon + sMS) * tView * segLen;
+    }
+
+    #ifdef BELT_OF_VENUS
+    // Belt of Venus: anti-solar twilight arch and Earth shadow projection
+    if (sunElev > -0.16 && sunElev < 0.04 && cosThetaSun < -0.35 && rayDir.y > 0.005) {
+        float antiSolarFactor = pow(max(-cosThetaSun, 0.0), 2.5);
+        float archHeight = smoothstep(0.01, 0.08, rayDir.y) * (1.0 - smoothstep(0.12, 0.30, rayDir.y));
+        float twilightStrength = 1.0 - smoothstep(-0.14, 0.03, abs(sunElev + 0.04));
+        vec3 pinkArch = vec3(0.88, 0.36, 0.50) * (archHeight * antiSolarFactor * twilightStrength * 0.40);
+        inScatter += pinkArch * exp(-optView.r * 0.4);
+    }
+    #endif
+
+    inScatter += vec3(0.005, 0.009, 0.024) * (biomeAtm.isCold ? 1.25 : 1.0) * exp(-optView.r * 0.4);
+    inScatter *= biomeAtm.skyTint;
+
+    #ifdef DYNAMIC_WEATHER
+    if (rain > 0.0) {
+        #ifdef DESERT_SANDSTORM
+        if (biomeAtm.isArid) {
+            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
+            vec3 sandstormColor = vec3(0.78, 0.52, 0.28) * mix(0.15, 1.0, dayFactor);
+            inScatter = mix(inScatter, sandstormColor, rain * 0.92);
+        } else
+        #endif
+        {
+            float dayFactor = clamp(sunElev * 4.0 + 0.2, 0.0, 1.0);
+            vec3 overcastDay   = vec3(0.28, 0.30, 0.34) * biomeAtm.fogTint;
+            vec3 overcastNight = vec3(0.018, 0.022, 0.032);
+            vec3 overcast = mix(overcastNight, overcastDay, dayFactor);
+            inScatter = mix(inScatter, overcast, rain * 0.90);
+        }
+    }
+    #endif
+
+    return max(inScatter * SKY_RADIANCE_SCALE, vec3(0.0));
+}
+
 // --- Directional Hemispherical Sky Ambient & Atmospheric Fog Color ---
 vec3 getAtmosphericFogColor(vec3 rayDir, vec3 sunDir, vec3 moonDir, vec3 upVector, float rain, LightningStrike strike, BiomeAtmosphere biomeAtm) {
     vec3 horizonDir = normalize(vec3(rayDir.x, max(rayDir.y * 0.25, 0.02), rayDir.z));
-    LightningStrike fogStrike = strike;
-    fogStrike.isTriggered = false; // Never render geometric bolt into diffuse ambient!
 
-    // Horizon sky radiance in view/normal direction (matches distance fog perfectly)
-    vec3 fogColor = calculateAtmosphericSky(horizonDir, sunDir, moonDir, upVector, rain, fogStrike, biomeAtm);
+    // Fast 4-step horizon sky radiance in view/normal direction (matches distance fog perfectly)
+    vec3 fogColor = getAtmosphericSkyFast(horizonDir, sunDir, moonDir, upVector, rain, biomeAtm);
 
     // If used as ambient normal irradiance on upward-facing surface, blend in zenith sky
     if (rayDir.y > 0.05) {
-        vec3 zenithColor = calculateAtmosphericSky(upVector, sunDir, moonDir, upVector, rain, fogStrike, biomeAtm);
+        vec3 zenithColor = getAtmosphericSkyFast(upVector, sunDir, moonDir, upVector, rain, biomeAtm);
         fogColor = mix(fogColor, zenithColor, smoothstep(0.05, 0.85, rayDir.y) * 0.65);
     } else if (rayDir.y < -0.05) {
         // Downward-facing surfaces receive subtle ground reflection

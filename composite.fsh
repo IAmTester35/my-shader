@@ -73,10 +73,14 @@ void main() {
 
         if (lightPosEye.z < 0.0 && lightHeight > -0.10) {
             vec4 lightClip = gbufferProjection * vec4(lightPosEye, 1.0);
-            vec3 lightNDC = lightClip.xyz / lightClip.w;
+            float safeW = abs(lightClip.w) > 1e-4 ? lightClip.w : (lightClip.w >= 0.0 ? 1e-4 : -1e-4);
+            vec3 lightNDC = lightClip.xyz / safeW;
             vec2 lightUV = lightNDC.xy * 0.5 + 0.5;
 
-            if (lightUV.x >= -0.3 && lightUV.x <= 1.3 && lightUV.y >= -0.3 && lightUV.y <= 1.3) {
+            float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * (1.0 - smoothstep(0.9, 1.2, lightUV.x)) *
+                             smoothstep(-0.2, 0.1, lightUV.y) * (1.0 - smoothstep(0.9, 1.2, lightUV.y));
+
+            if (edgeFade > 0.001) {
                 const int G_STEPS = GODRAYS_SAMPLES;
                 vec2 deltaUV = (lightUV - texCoord) / float(G_STEPS);
                 // Screen-space Blue Noise jitter (Moments in Graphics) to eliminate stepping and white-noise grain
@@ -84,7 +88,7 @@ void main() {
 
                 float rayDensity = 0.0;
                 float decay = 1.0;
-                float decayStep = pow(0.12, 1.0 / float(G_STEPS));
+                float decayStep = exp(-2.12026 / float(G_STEPS)); // Analytical pow(0.12, 1.0 / G_STEPS)
 
                 for (int i = 0; i < G_STEPS; ++i) {
                     vec2 sampleCoord = texCoord + deltaUV * (float(i) + jitter);
@@ -96,9 +100,6 @@ void main() {
                 }
 
                 rayDensity /= float(G_STEPS);
-
-                float edgeFade = smoothstep(-0.2, 0.1, lightUV.x) * (1.0 - smoothstep(0.9, 1.2, lightUV.x)) *
-                                 smoothstep(-0.2, 0.1, lightUV.y) * (1.0 - smoothstep(0.9, 1.2, lightUV.y));
 
                 vec3 godrayColor;
                 if (useSun) {

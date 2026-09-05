@@ -116,10 +116,27 @@ value.VOLUMETRIC_CLOUD_STEPS.32=Điện Ảnh (32 Bước)
 option.CLOUD_LAYERS=Số Lớp Mây
 value.CLOUD_LAYERS.1=Mây Tích (Cumulus)
 value.CLOUD_LAYERS.2=Mây Tích + Mây Ti (Cirrus)
+option.CLOUD_WMO_GENUS=Chủng Loại Mây (WMO Atlas)
+option.CLOUD_WMO_GENUS.comment=Chọn 1 trong 10 chủng loại mây chuẩn khí tượng quốc tế WMO. Mức 0: Tự động biến đổi theo thời tiết và vùng sinh thái (Biome).
+value.CLOUD_WMO_GENUS.0=Tự Động (Thời Tiết & Biome)
+value.CLOUD_WMO_GENUS.1=Mây Ti (Cirrus - Ci)
+value.CLOUD_WMO_GENUS.2=Mây Ti Tích (Cirrocumulus - Cc)
+value.CLOUD_WMO_GENUS.3=Mây Ti Tầng (Cirrostratus - Cs)
+value.CLOUD_WMO_GENUS.4=Mây Trung Tích (Altocumulus - Ac)
+value.CLOUD_WMO_GENUS.5=Mây Trung Tầng (Altostratus - As)
+value.CLOUD_WMO_GENUS.6=Mây Tầng Tích (Stratocumulus - Sc)
+value.CLOUD_WMO_GENUS.7=Mây Tầng (Stratus - St)
+value.CLOUD_WMO_GENUS.8=Mây Vũ Tầng (Nimbostratus - Ns)
+value.CLOUD_WMO_GENUS.9=Mây Tích (Cumulus - Cu)
+value.CLOUD_WMO_GENUS.10=Mây Vũ Tích (Cumulonimbus - Cb)
+option.CLOUD_COVERAGE=Độ Che Phủ Của Mây
+option.CLOUD_COVERAGE.comment=Hệ số nhân độ che phủ bầu trời của các khối mây.
 option.CLOUD_SPEED=Tốc Độ Gió
 option.CLOUD_DENSITY=Độ Dày Của Mây
 option.CLOUD_SILVER_LINING=Viền Sáng Bạc Tán Xạ Kép
 option.CLOUD_SHADOWING=Tự Đổ Bóng Khối & Hiệu Ứng Đường Bột
+option.CLOUD_ICE_HALO=Quầng Băng 22° Mây Ti Tầng
+option.CLOUD_ICE_HALO.comment=Vòng khúc xạ hào quang 22° quanh Mặt trời và Mặt trăng do tinh thể băng lục giác trong mây ti tầng gây ra.
 
 # Thời tiết
 option.DYNAMIC_WEATHER=Thời Tiết Động
